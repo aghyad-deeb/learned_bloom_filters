@@ -1,3 +1,6 @@
+"""
+What does it mean to test if a b
+"""
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -16,10 +19,13 @@ TODO
     - Check if the FPR calculation for the model is correct (page 16 FPR_\tau)
     - Check if the bloom filter training works properly. 
     - Checks how the model is chosen for some FPR.
-    - Need to add model size to results
+    - Need to add model size to results.
 !   - Paper reports bloom filter size to be > 1.31 MB, why am I getting 64 bytes
+!   - When they test the bloom filter, they test that a set of items not in the 
+!   the set does not return true.
 
 """
+desired_fpr = 1/100
 
 # Check for MPS availability
 device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
@@ -99,11 +105,11 @@ class BloomFilter:
 # 4. Data Loading using malicious_phish.csv
 # -----------------------------
 # Load the dataset from the CSV file. Adjust the file path as needed.
-df = pd.read_csv("malicious_phish.csv")
+df = pd.read_csv("full_dataset.csv")
 
 # We assume df has columns: 'url' and 'type' (e.g., "benign", "defacement", "phishing").
 # We'll create a binary label: 0 for benign, 1 for anything else.
-df['label'] = (df['type'] != 'benign').astype(int)
+df['label'] = (df['type'] == 'phishing').astype(int)
 
 # Build a list of (url, label) tuples.
 data = list(zip(df['url'].tolist(), df['label'].tolist()))
@@ -111,6 +117,7 @@ data = list(zip(df['url'].tolist(), df['label'].tolist()))
 #! Limit the size of data for testing
 data_cap = 10 ** 4 * 2
 data = data[:data_cap]
+# print(f"{data.shape[0]=}")
 
 # Shuffle and split the dataset into training, validation, and test sets (60/20/20 split).
 random.shuffle(data)
@@ -118,10 +125,14 @@ train_split = int(0.6 * len(data))
 val_split = int(0.8 * len(data))
 train_data = data[:train_split]
 val_data = data[train_split:val_split]
-test_data = data[val_split:]
+test_df = pd.read_csv("negative_dataset.csv")
+test_df["label"] = (test_df["type"] == "phishing").astype(int)
+test_data = list(zip(test_df["url"].tolist(), test_df["label"].tolist()))
+
+print(f"{(len(train_data), len(val_data), len(test_data))=}")
 
 # Build vocabulary from all URLs in the dataset
-all_url_texts = [url for url, _ in data]
+all_url_texts = [url for url, _ in data] + [url for url, _ in test_data]
 char2idx, idx2char = build_vocab(all_url_texts)
 vocab_size = len(char2idx)
 
@@ -211,7 +222,9 @@ train_model(model, X_train, y_train, num_epochs, batch_size)
 # 6. Determine threshold τ on validation set to achieve desired FPR.
 # -----------------------------
 # We choose a target FPR (for the model alone) – for instance, 0.5%.
-target_fpr = 0.005
+#! Following the steps of the paper, this should be p*/2 , where p* is the 
+#! desired overall fpr of the learned bloom filter
+model_desired_fpr = desired_fpr / 2
 
 print("\nEvaluating on validation set to determine threshold...")
 model.eval()
@@ -224,7 +237,8 @@ with torch.no_grad():
 negatives_val = val_probs[val_labels == 0]
 # We search for a threshold tau that gives approximately target_fpr among negatives.
 # One simple method: sort the negative probabilities and pick the (1 - target_fpr) quantile.
-tau = np.quantile(negatives_val, 1 - target_fpr)
+#! Check if this makes sense
+tau = np.quantile(negatives_val, 1 - model_desired_fpr)
 print(f"Chosen threshold tau: {tau:.4f}")
 
 # -----------------------------
@@ -243,7 +257,7 @@ negatives_test = test_labels == 0
 positives_test = test_labels == 1
 fpr = np.sum((test_predictions == 1) & negatives_test) / np.sum(negatives_test)
 fnr = np.sum((test_predictions == 0) & positives_test) / np.sum(positives_test)
-print(f"Test FPR: {fpr*100:.2f}%, Test FNR: {fnr*100:.2f}%")
+print(f"Model Only: Test FPR: {fpr*100:.2f}%, Test FNR: {fnr*100:.2f}%")
 
 # -----------------------------
 # 8. Build the overflow Bloom filter.
@@ -260,13 +274,25 @@ for url, label in tqdm(test_data):
         prob = model(idx_seq).cpu().item()
     # If the model predicted negative (prob < tau) but the URL is positive (label 1), it is a false negative.
     if label == 1 and prob < tau:
+        #! Should these also include the true negatives? probably not.
         overflow_urls.append(url)
 
 # Define Bloom filter parameters.
 # For demonstration, we set m (size) and k (number of hash functions) arbitrarily.
 #! Tune these
-m = 10000  # size of bit array (in bits)
-k = 3      # number of hash functions
+#! This is a bit non trivial as we need to use the fpr of the model to find the 
+#! desired fpr for the bloom filter and use the number of false negatives to 
+#! find the optimal values for these.
+overflow_bloom_filter_desired_fpr = desired_fpr / 2
+
+# Calculate optimal Bloom filter parameters
+# Formula for optimal size: m = -n * ln(p) / (ln(2))^2
+# Formula for optimal number of hash functions: k = m/n * ln(2)
+n = len(overflow_urls)  # number of elements to store
+p = overflow_bloom_filter_desired_fpr  # desired false positive rate
+m = int(-n * math.log(p) / (math.log(2)**2))  # optimal number of bits
+k = int(m/n * math.log(2))  # optimal number of hash functions
+k = max(k, 1)  # ensure at least one hash function
 
 #! This should use the train set to train the bloom filter and test on test set
 #! does it do this?
@@ -285,12 +311,16 @@ print(f"Estimated memory usage of overflow Bloom filter: {overflow_bloom.memory_
 # -----------------------------
 # For comparison, suppose we want a traditional Bloom filter for all positive URLs in the test set.
 # For a given FPR, standard Bloom filter sizing formulas can be used.
-#! It's sus that this doesn't define a new bloom filter
+#! The calculation is correct, but currently my model is larger than theirs 
+#! relative to the dataset size because their dataset is 1.7 true positives and
+#! random URLs 
+
 n_positive = np.sum(test_labels == 1)
 # For example, for a desired FPR of 1%, the optimal number of bits per element is:
 # m_per_element = -log(FPR) / (log(2)**2)
-desired_fpr = 0.01
+
 m_per_element = -math.log(desired_fpr) / (math.log(2)**2)
+print(f"{m_per_element=}")
 total_bits = n_positive * m_per_element
 print(f"Traditional Bloom filter size for {n_positive} positives at {desired_fpr*100:.1f}% FPR: {total_bits/8:.2f} bytes")
     
@@ -302,3 +332,5 @@ print(f"Traditional Bloom filter size for {n_positive} positives at {desired_fpr
 # On the test set, false negatives (i.e. missed positives) are captured by an auxiliary (overflow) Bloom filter.
 # This combination of a learned model plus a small Bloom filter can yield a lower overall memory footprint
 # compared to a traditional Bloom filter while guaranteeing zero false negatives.
+
+#! Do the synthteic experriment
