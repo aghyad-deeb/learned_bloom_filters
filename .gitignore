@@ -1,9 +1,9 @@
 *.zip
 *.pdf
-*/.*
+**/.*
 *.csv
 *.lst
-*/venv
-*/models/*
+**/venv
+**/models/*
 venv
 

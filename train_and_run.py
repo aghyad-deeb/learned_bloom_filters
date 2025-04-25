@@ -12,6 +12,8 @@ import math
 import pandas as pd
 from tqdm import tqdm
 import time
+import datetime
+import json
 
 """
 TODO
@@ -319,19 +321,53 @@ def load_model(model, load_path, device):
     return model
 
 def main():
+    import datetime
+    import json
+    
+    # model hyperparameters
+    # embedding_dim = 32
+    # hidden_dim = 16
+    embedding_dim = 8
+    hidden_dim = 4
+
+    # training hyperparameters
+    num_epochs = 5
+    batch_size = 64
+    learning_rate = 0.001
+    
+    # Create timestamp for this run
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Include model architecture in the run directory name
+    model_config = f"emb{embedding_dim}_hid{hidden_dim}"
+    
     data_dir = "data"
     model_dir = "models"
+    model_run_dir = os.path.join(model_dir, f"run_{timestamp}_{model_config}")
+    
     training_dataset_name = "training_dataset.csv"
     negative_dataset_name = "negative_dataset.csv"
-    model_save_path = os.path.join(model_dir, "url_classifier.pt")
+    model_save_path = os.path.join(model_run_dir, "url_classifier.pt")
+    overflow_bloom_filter_save_path = os.path.join(model_run_dir, "overflow_bloom.pkl")
+    threshold_save_path = os.path.join(model_run_dir, "threshold.txt")
+    hyperparams_save_path = os.path.join(model_run_dir, "hyperparams.json")
+    
     training_dataset_path = os.path.join(data_dir, training_dataset_name)
     negative_dataset_path = os.path.join(data_dir, negative_dataset_name)
+    
+    # Create model run directory
+    os.makedirs(model_run_dir, exist_ok=True)
+    # print(f"Saving model artifacts to: {model_run_dir}")    
     # Set target FPR
     desired_fpr = 1/100
     random_seed = 42
     
-    # Check for MPS availability
-    device = torch.device('mps' if torch.backends.mps.is_available() else 'cpu')
+    # Check for CUDA, MPS, or CPU availability
+    device = torch.device(
+        'cuda' if torch.cuda.is_available()
+            else 'mps' if torch.backends.mps.is_available()
+                else 'cpu'
+    )
     print(f"Using device: {device}")
     
     # Load data
@@ -353,40 +389,66 @@ def main():
     x_test, y_test = prepare_dataset(test_df, char2idx, device)
     x_negative, y_negative = prepare_dataset(negative_df, char2idx, device)
     
-    # Define model hyperparameters
-    embedding_dim = 32
-    hidden_dim = 16
-    num_epochs = 5
-    batch_size = 64
-    learning_rate = 0.001
+    # Save hyperparameters as JSON
+    hyperparams = {
+        "embedding_dim": embedding_dim,
+        "hidden_dim": hidden_dim,
+        "num_epochs": num_epochs,
+        "batch_size": batch_size,
+        "learning_rate": learning_rate,
+        "desired_fpr": desired_fpr,
+        "random_seed": random_seed,
+        "vocab_size": vocab_size,
+        "timestamp": timestamp,
+        "device": str(device)
+    }
+    
+    with open(hyperparams_save_path, 'w') as f:
+        json.dump(hyperparams, f, indent=4)
+    print(f"Hyperparameters saved to {hyperparams_save_path}")
     
     # Initialize the model, loss function, and optimizer
     model = URLClassifier(vocab_size, embedding_dim, hidden_dim).to(device)
     
-    # Check if saved model exists and load it if requested
-    if os.path.exists(model_save_path) and input("Load saved model? (y/n): ").lower() == 'y':
-        model = load_model(model, model_save_path, device)
-    else:
-        # Train the model
-        criterion = nn.BCELoss()
-        optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-        model = train_model(model, x_train, y_train, num_epochs, batch_size, criterion, optimizer, device)
-        
-        # Save the trained model
-        save_model(model, model_save_path)
+    # Train the model
+    criterion = nn.BCELoss()
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
+    model = train_model(model, x_train, y_train, num_epochs, batch_size, criterion, optimizer, device)
+    
+    # Save the trained model
+    save_model(model, model_save_path)
+    
+    # Create a link to the latest run
+    latest_run_link = os.path.join(model_dir, "latest_run")
+    if os.path.exists(latest_run_link) and os.path.islink(latest_run_link):
+        os.unlink(latest_run_link)
+    if os.path.exists(latest_run_link):
+        os.remove(latest_run_link)
+    os.symlink(model_run_dir, latest_run_link)
+    print(f"Created link to latest run: {latest_run_link}")
     
     # Determine threshold
     model_desired_fpr = desired_fpr / 2
     threshold = determine_threshold(model, x_val, y_val, model_desired_fpr)
     
+    # Save threshold
+    with open(threshold_save_path, 'w') as f:
+        f.write(str(threshold))
+    print(f"Threshold saved to {threshold_save_path}")
+    
     # Evaluate model
     test_probs, test_labels, test_predictions = evaluate_model(model, x_test, y_test, threshold)
     
-    # Following the paper, the FPR is half of the overflow bloom filter is half
     # of the total fpr.
     overflow_bloom_filter_desired_fpr = desired_fpr - model_desired_fpr
     # Build overflow bloom filter
     overflow_bloom = build_overflow_filter(test_df, model, threshold, char2idx, device, overflow_bloom_filter_desired_fpr)
+    
+    # Save overflow bloom filter
+    import pickle
+    with open(overflow_bloom_filter_save_path, 'wb') as f:
+        pickle.dump(overflow_bloom, f)
+    print(f"Overflow bloom filter saved to {overflow_bloom_filter_save_path}")
     
     # Compare with traditional bloom filter
     compare_with_traditional_filter(test_labels, desired_fpr)
