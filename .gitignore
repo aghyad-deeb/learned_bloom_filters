@@ -1,8 +1,9 @@
-*/.zip
-*/.pdf
+*.zip
+*.pdf
 */.*
-*/.csv
-*/.lst
+*.csv
+*.lst
 */venv
 */models/*
+venv
 
