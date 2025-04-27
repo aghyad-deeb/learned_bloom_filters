@@ -563,9 +563,6 @@ def load_model(model, load_path, device):
     return model
 
 def main():
-    import datetime
-    import json
-    
     # model hyperparameters
     embedding_dim = 32
     hidden_dim = 16
