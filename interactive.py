@@ -13,6 +13,8 @@ import pickle
 import argparse
 import json
 import time
+import datetime
+from tqdm import tqdm
 
 # Import necessary classes and functions from train_and_run.py
 from train_and_run import URLClassifier, BloomFilter, url_to_indices, build_vocab, load_data
@@ -68,10 +70,8 @@ def load_hyperparams(load_path):
     if os.path.exists(load_path):
         with open(load_path, 'r') as f:
             hyperparams = json.load(f)
-        print(f"Hyperparameters loaded from {load_path}")
         return hyperparams
     else:
-        print(f"No hyperparameters file found at {load_path}")
         return None
 
 def test_url(url, model, threshold, char2idx, device, overflow_bloom=None):
@@ -120,11 +120,11 @@ def test_url(url, model, threshold, char2idx, device, overflow_bloom=None):
     # Check if above threshold
     model_prediction = prob >= threshold
     
-    # Check if in overflow Bloom filter (if applicable)
+    # Check if in overflow Bloom filter ONLY if model prediction is negative
     is_in_overflow = False
     timing_info['time_to_check_overflow_bloom_filter'] = 0
     
-    if overflow_bloom is not None:
+    if overflow_bloom is not None and not model_prediction:
         bloom_start = time.time()
         is_in_overflow = url in overflow_bloom
         bloom_end = time.time()
@@ -166,9 +166,6 @@ def batch_inference(urls, model, threshold, char2idx, device, overflow_bloom=Non
     Returns:
         Dictionary with results and timing information
     """
-    import time
-    import numpy as np
-    from tqdm import tqdm
     
     total_urls = len(urls)
     num_batches = (total_urls + batch_size - 1) // batch_size
@@ -178,21 +175,22 @@ def batch_inference(urls, model, threshold, char2idx, device, overflow_bloom=Non
         'model_positives': 0,
         'bloom_positives': 0,
         'total_positives': 0,
+        'num_successful_urls': 0,
         'failed_urls': [],
-        'successful_urls': 0,
         'timing': {
-            'preprocessing_time': 0,
-            'inference_time': 0,
-            'bloom_filter_time': 0,
-            'total_time': 0,
-            'warmup_time': 0  # Track warmup time
+            'total_preprocessing_time': 0,
+            'preprocessing_time_per_url': 0,
+            'warmup_batch_time': 0,
+            'moving_tensor_to_device_per_batch_time_list': [],
+            'inference_per_batch_time_list': [],
+            'overflow_bloom_filter_per_batch_time_list': [],
+            'batch_total_latency_per_batch_time_list': [],
         },
-        'batch_latencies': []  # Track individual batch latencies
     }
     
     # Add storage for detailed URL results if requested
     if return_detailed_results:
-        results['url_results'] = {}
+        results['per_url_results'] = {}
     
     print(f"Processing {total_urls} URLs in {num_batches} batches (batch size: {batch_size})...")
     start_time = time.time()
@@ -211,10 +209,11 @@ def batch_inference(urls, model, threshold, char2idx, device, overflow_bloom=Non
             results['failed_urls'].append(url)
     
     preprocessing_end = time.time()
-    results['timing']['preprocessing_time'] = (preprocessing_end - preprocessing_start) * 1000
+    results['timing']['total_preprocessing_time'] = (preprocessing_end - preprocessing_start) * 1000
+    results['timing']['preprocessing_time_per_url'] = results['timing']['total_preprocessing_time'] / len(valid_urls)
     
     # Now we have only valid URLs and their indices
-    results['successful_urls'] = len(valid_urls)
+    results['num_successful_urls'] = len(valid_urls)
     
     # Process in batches
     model.eval()
@@ -233,9 +232,13 @@ def batch_inference(urls, model, threshold, char2idx, device, overflow_bloom=Non
             _ = model(warmup_tensor)
             
         warmup_end = time.time()
-        results['timing']['warmup_time'] = (warmup_end - warmup_start) * 1000
-        print(f"Warmup completed in {results['timing']['warmup_time']:.2f} ms")
+        results['timing']['warmup_batch_time'] = (warmup_end - warmup_start) * 1000
     
+    results['timing']['moving_tensor_to_device_per_batch_time_list'] = []
+    results['timing']['inference_per_batch_time_list'] = []
+    results['timing']['overflow_bloom_filter_per_batch_time_list'] = []
+    results['timing']['batch_total_latency_per_batch_time_list'] = []
+
     for i in tqdm(range(0, len(valid_urls), batch_size)):
         batch_end = min(i + batch_size, len(valid_urls))
         batch_indices = indices_list[i:batch_end]
@@ -250,13 +253,14 @@ def batch_inference(urls, model, threshold, char2idx, device, overflow_bloom=Non
         
         # Inference on batch
         inference_start = time.time()
+        results['timing']['moving_tensor_to_device_per_batch_time_list'].append((inference_start - batch_start) * 1000)
         with torch.no_grad():
             batch_probs = model(batch_tensor).cpu().numpy()
         inference_end = time.time()
-        batch_inference_time = (inference_end - inference_start) * 1000
-        inference_time += batch_inference_time
         
-        # Check model predictions (vectorized)
+        batch_inference_time = (inference_end - inference_start) * 1000
+        results['timing']['inference_per_batch_time_list'].append(batch_inference_time)
+        
         batch_model_predictions = (batch_probs >= threshold)
         results['model_positives'] += np.sum(batch_model_predictions)
         
@@ -269,21 +273,23 @@ def batch_inference(urls, model, threshold, char2idx, device, overflow_bloom=Non
         
         if overflow_bloom is not None:
             for j, url in enumerate(batch_urls):
-                in_bloom = url in overflow_bloom
-                if in_bloom:
-                    batch_bloom_positives += 1
-                    bloom_matches[j] = True
+                # Only check the bloom filter if the model prediction is negative
+                if not batch_model_predictions[j]:
+                    in_bloom = url in overflow_bloom
+                    if in_bloom:
+                        batch_bloom_positives += 1
+                        bloom_matches[j] = True
         
         bloom_end = time.time()
         batch_bloom_time = (bloom_end - bloom_start) * 1000
-        bloom_filter_time += batch_bloom_time
+        results['timing']['overflow_bloom_filter_per_batch_time_list'].append(batch_bloom_time)
         
         # Record the end of batch processing
         batch_end_time = time.time()
         batch_latency = (batch_end_time - batch_start) * 1000  # in milliseconds
         
         # Store this batch's complete latency
-        results['batch_latencies'].append(batch_latency)
+        results['timing']['batch_total_latency_per_batch_time_list'].append(batch_latency)
         
         # If detailed results are requested, store per-URL information
         if return_detailed_results:
@@ -292,15 +298,11 @@ def batch_inference(urls, model, threshold, char2idx, device, overflow_bloom=Non
                 in_bloom = bool(bloom_matches[j])
                 is_positive = model_pred or in_bloom
                 
-                results['url_results'][url] = {
+                results['per_url_results'][url] = {
                     'model_prediction': model_pred,
                     'probability': float(batch_probs[j]),
                     'in_bloom': in_bloom,
                     'is_positive': is_positive,
-                    'timing': {
-                        'inference': batch_inference_time / current_batch_size,  # Approximate per-URL timing
-                        'bloom_filter': batch_bloom_time / current_batch_size if overflow_bloom is not None else 0
-                    }
                 }
         
         # Calculate total positives as the number of URLs that are either model-positive or bloom-positive
@@ -308,200 +310,18 @@ def batch_inference(urls, model, threshold, char2idx, device, overflow_bloom=Non
         results['bloom_positives'] += batch_bloom_positives
         results['total_positives'] += total_positives_in_batch
     
-    end_time = time.time()
-    
-    # Record timing information
-    results['timing']['inference_time'] = inference_time
-    results['timing']['bloom_filter_time'] = bloom_filter_time
-    results['timing']['total_time'] = (end_time - start_time) * 1000
-    
-    # Calculate batch latency statistics
-    if results['batch_latencies']:
-        results['batch_stats'] = {
-            'min_latency': np.min(results['batch_latencies']),
-            'max_latency': np.max(results['batch_latencies']),
-            'avg_latency': np.mean(results['batch_latencies']),
-            'median_latency': np.median(results['batch_latencies']),
-            'p95_latency': np.percentile(results['batch_latencies'], 95),
-            'p99_latency': np.percentile(results['batch_latencies'], 99),
-            'std_dev': np.std(results['batch_latencies'])
-        }
-    
-    # Calculate per-URL metrics (for throughput estimation, not true latency)
-    if results['successful_urls'] > 0:
-        results['timing']['preprocessing_per_url'] = results['timing']['preprocessing_time'] / results['successful_urls']
-        results['timing']['inference_per_url'] = results['timing']['inference_time'] / results['successful_urls']
-        results['timing']['bloom_filter_per_url'] = results['timing']['bloom_filter_time'] / results['successful_urls']
-        results['timing']['total_per_url'] = results['timing']['total_time'] / results['successful_urls']
-    
-    # Print summary
-    print("\nBatch Inference Summary:")
-    print(f"Total URLs: {total_urls}")
-    print(f"Successfully processed: {results['successful_urls']}")
-    print(f"Failed: {len(results['failed_urls'])}")
-    print(f"Model positives: {results['model_positives']} ({results['model_positives']/results['successful_urls']*100:.2f}%)")
-    
-    if overflow_bloom is not None:
-        print(f"Bloom filter positives: {results['bloom_positives']} ({results['bloom_positives']/results['successful_urls']*100:.2f}%)")
-    
-    print(f"Total positives: {results['total_positives']} ({results['total_positives']/results['successful_urls']*100:.2f}%)")
-    print(f"Total execution time: {results['timing']['total_time']/1000:.2f} seconds")
-    
-    print("\nTiming Information (Total):")
-    print(f"- Warmup time: {results['timing']['warmup_time']:.2f} ms")
-    print(f"- Preprocessing: {results['timing']['preprocessing_time']:.2f} ms")
-    print(f"- Model inference: {results['timing']['inference_time']:.2f} ms")
-    print(f"- Bloom filter: {results['timing']['bloom_filter_time']:.2f} ms")
-    print(f"- Total: {results['timing']['total_time']:.2f} ms")
-    
-    print("\nBatch Latency (true response time per batch):")
-    if 'batch_stats' in results:
-        print(f"- Minimum: {results['batch_stats']['min_latency']:.2f} ms")
-        print(f"- Maximum: {results['batch_stats']['max_latency']:.2f} ms")
-        print(f"- Average: {results['batch_stats']['avg_latency']:.2f} ms")
-        print(f"- Median: {results['batch_stats']['median_latency']:.2f} ms")
-        print(f"- 95th percentile: {results['batch_stats']['p95_latency']:.2f} ms")
-        print(f"- 99th percentile: {results['batch_stats']['p99_latency']:.2f} ms")
-        print(f"- Standard Deviation: {results['batch_stats']['std_dev']:.2f} ms")
-    
-    print("\nThroughput Information (Per URL):")
-    print(f"- Preprocessing: {results['timing']['preprocessing_per_url']:.2f} ms/URL")
-    print(f"- Model inference: {results['timing']['inference_per_url']:.2f} ms/URL")
-    print(f"- Bloom filter: {results['timing']['bloom_filter_per_url']:.2f} ms/URL")
-    print(f"- Total: {results['timing']['total_per_url']:.2f} ms/URL")
-    print(f"- Estimated throughput: {1000 / results['timing']['total_per_url']:.2f} URLs/second")
-    
     return results
 
-# Rename existing batch_test to sequential_test
-def sequential_test(urls, model, threshold, char2idx, device, overflow_bloom=None, verbose=False):
-    """
-    Test URLs sequentially (one by one) and provide detailed timing statistics.
-    This is not optimized for throughput but provides detailed per-URL statistics.
     
-    Args:
-        urls: List of URLs to test
-        model: The trained model
-        threshold: Classification threshold
-        char2idx: Character to index mapping
-        device: The device to run the model on
-        overflow_bloom: The overflow Bloom filter
-        verbose: Whether to print results for each URL
-        
-    Returns:
-        Dictionary with results and timing statistics
-    """
-    import time
-    import numpy as np
-    
-    total_urls = len(urls)
-    successful_tests = 0
-    results = {
-        'model_positives': 0,
-        'bloom_positives': 0,
-        'total_positives': 0,
-        'failed_tests': 0,
-        'timing': {
-            'time_to_create_tensor_from_indices': [],
-            'time_to_transfer_tensor_to_device': [],
-            'time_to_run_model': [],
-            'time_to_check_overflow_bloom_filter': [],
-            'total': []
-        }
-    }
-    
-    print(f"Testing {total_urls} URLs sequentially...")
-    start_time = time.time()
-    
-    for i, url in enumerate(urls):
-        if verbose:
-            print(f"\nTesting URL {i+1}/{total_urls}: {url}")
-        
-        model_prediction, prob, is_in_overflow, final_result, timing_info = test_url(
-            url, model, threshold, char2idx, device, overflow_bloom
-        )
-        
-        if model_prediction is None:
-            results['failed_tests'] += 1
-            if verbose:
-                print("  Failed to process URL (contains unknown characters)")
-            continue
-        
-        successful_tests += 1
-        
-        # Record results
-        if model_prediction:
-            results['model_positives'] += 1
-        if is_in_overflow:
-            results['bloom_positives'] += 1
-        if final_result:
-            results['total_positives'] += 1
-            
-        # Record timing
-        for key, value in timing_info.items():
-            if key in results['timing']:
-                results['timing'][key].append(value)
-            
-        if verbose:
-            print(f"  Model: {'Malicious' if model_prediction else 'Benign'} ({prob:.4f})")
-            if overflow_bloom is not None:
-                print(f"  Bloom: {'Yes' if is_in_overflow else 'No'}")
-            print(f"  Final: {'Malicious' if final_result else 'Benign'}")
-            print(f"  Time: {timing_info['total']:.2f} ms")
-    
-    # Calculate statistics
-    total_time = time.time() - start_time
-    
-    if successful_tests > 0:
-        # Calculate timing averages
-        timing_keys = list(results['timing'].keys())
-        for key in timing_keys:
-            if results['timing'][key]:
-                results['timing'][key + '_avg'] = np.mean(results['timing'][key])
-                results['timing'][key + '_min'] = np.min(results['timing'][key])
-                results['timing'][key + '_max'] = np.max(results['timing'][key])
-                results['timing'][key + '_median'] = np.median(results['timing'][key])
-                results['timing'][key + '_std'] = np.std(results['timing'][key])
-    
-    # Print summary
-    print("\nSequential Test Summary:")
-    print(f"Total URLs tested: {total_urls}")
-    print(f"Successful tests: {successful_tests}")
-    print(f"Failed tests: {results['failed_tests']}")
-    print(f"Model positives: {results['model_positives']} ({results['model_positives']/successful_tests*100:.2f}%)")
-    
-    if overflow_bloom is not None:
-        print(f"Bloom filter positives: {results['bloom_positives']} ({results['bloom_positives']/successful_tests*100:.2f}%)")
-    
-    print(f"Total positives: {results['total_positives']} ({results['total_positives']/successful_tests*100:.2f}%)")
-    print(f"Total execution time: {total_time:.2f} seconds")
-    
-    print("\nAverage Timing (ms):")
-    timing_display = [
-        ('time_to_create_tensor_from_indices', 'CPU Processing'),
-        ('time_to_transfer_tensor_to_device', 'Device Transfer'),
-        ('time_to_run_model', 'Model Inference'),
-        ('time_to_check_overflow_bloom_filter', 'Bloom Filter Lookup'),
-        ('total', 'Total')
-    ]
-    
-    for key, display_name in timing_display:
-        if key + '_avg' in results['timing']:
-            print(f"- {display_name}: {results['timing'][key + '_avg']:.2f} ms (±{results['timing'][key + '_std']:.2f})")
-    
-    return results
-
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Interactive Learned Bloom Filter Testing')
     parser.add_argument('--run', type=str, help='Specific run directory to use (default: latest)')
-    parser.add_argument('--sequential', action='store_true', help='Run sequential testing using test data')
     parser.add_argument('--batch', action='store_true', help='Run batched inference using test data')
     parser.add_argument('--batch-size', type=int, default=64, help='Size of batches for model inference')
     parser.add_argument('--sample-size', type=int, default=100, help='Number of samples to test')
     parser.add_argument('--verbose', action='store_true', help='Show detailed results for sequential testing')
-    parser.add_argument('--output', type=str, help='Output file to save results as JSON')
-    parser.add_argument('--no-interactive', action='store_true', help='Disable interactive mode (useful for batch testing)')
+    parser.add_argument('--interactive', action='store_true', default=False, help='Enable interactive mode (useful for batch testing)')
     args = parser.parse_args()
     
     data_dir = "data"
@@ -517,47 +337,40 @@ def main():
     else:
         # Try to use the latest_run symlink
         latest_run_link = os.path.join(model_dir, "latest_run")
+        run_dirs = get_run_dirs(model_dir)
+        if run_dirs:
+            run_dir = os.path.abspath(run_dirs[0])  # First one is the newest
         if os.path.exists(latest_run_link) and os.path.islink(latest_run_link):
-            run_dir = os.path.realpath(latest_run_link)
-        else:
-            # If no symlink, find the latest run by timestamp
-            run_dirs = get_run_dirs(model_dir)
-            if run_dirs:
-                run_dir = run_dirs[0]  # First one is the newest
-            else:
-                print("No run directories found. Please train a model first.")
-                return
-    
-    print(f"Using model artifacts from: {run_dir}")
+            assert run_dir == os.path.realpath(latest_run_link), \
+                f"Latest run link {latest_run_link} points to " \
+                f"{os.path.realpath(latest_run_link)}, but run_dir is {run_dir}"
     
     # Set up paths for model artifacts
     model_save_path = os.path.join(run_dir, "url_classifier.pt")
     overflow_bloom_filter_path = os.path.join(run_dir, "overflow_bloom.pkl")
     threshold_path = os.path.join(run_dir, "threshold.txt")
     hyperparams_path = os.path.join(run_dir, "hyperparams.json")
-    
+    outputs_path = os.path.join(run_dir, "inference_outputs")
+    if not os.path.exists(outputs_path):
+        os.makedirs(outputs_path)
     # Check for CUDA, MPS, or CPU availability
     device = torch.device(
         'cuda' if torch.cuda.is_available()
             else 'mps' if torch.backends.mps.is_available()
                 else 'cpu'
     )
-    print(f"Using device: {device}")
     
     # Load hyperparameters
     hyperparams = load_hyperparams(hyperparams_path)
     
     # Load data to build vocabulary
-    print("Loading datasets to build vocabulary...")
     train_df, val_df, test_df, negative_df = load_data(training_dataset_path, negative_dataset_path)
     
     # Build vocabulary
-    print("Building vocabulary...")
     char2idx, idx2char = build_vocab([train_df, val_df, test_df, negative_df])
     vocab_size = len(char2idx)
     
     # Initialize the model with hyperparameters from file if available
-    print("Initializing model...")
     if hyperparams:
         embedding_dim = hyperparams.get('embedding_dim', 32)
         hidden_dim = hyperparams.get('hidden_dim', 16)
@@ -578,70 +391,12 @@ def main():
     if os.path.exists(threshold_path):
         with open(threshold_path, 'r') as f:
             threshold = float(f.read().strip())
-        print(f"Threshold loaded: {threshold}")
     else:
-        # Default threshold if not saved
-        threshold = 0.5
-        print(f"No threshold file found. Using default: {threshold}")
+        raise ValueError(f"No threshold file found at {threshold_path}")
+    
     
     # Load the overflow Bloom filter
     overflow_bloom = load_bloom_filter(overflow_bloom_filter_path)
-    
-    # Run sequential testing if requested
-    if args.sequential:
-        print("\nRunning sequential test...")
-        # Sample URLs from test set
-        sample_size = min(args.sample_size, len(test_df))
-        test_sample = test_df.sample(sample_size)
-        sample_urls = test_sample['url'].tolist()
-        
-        # Run sequential test
-        seq_results = sequential_test(sample_urls, model, threshold, char2idx, device, overflow_bloom, verbose=args.verbose)
-        
-        # Save results to file if specified
-        if args.output and 'seq_results' in locals():
-            try:
-                output_data = seq_results.copy()  # Create a copy to avoid modifying the original
-                # Add batch size and other metadata
-                output_data['batch_size'] = 1
-                output_data['sample_size'] = args.sample_size
-                
-                # Ensure all values are JSON serializable
-                for key in output_data:
-                    if isinstance(output_data[key], np.ndarray):
-                        output_data[key] = output_data[key].tolist()
-                    elif isinstance(output_data[key], np.integer):
-                        output_data[key] = int(output_data[key])
-                    elif isinstance(output_data[key], np.floating):
-                        output_data[key] = float(output_data[key])
-                    elif key == 'batch_latencies' and isinstance(output_data[key], list):
-                        # Convert any numpy values in the list to Python types
-                        output_data[key] = [float(x) if isinstance(x, (np.integer, np.floating)) else x for x in output_data[key]]
-                    elif isinstance(output_data[key], dict):
-                        # Handle nested dictionaries
-                        for nested_key in output_data[key]:
-                            if isinstance(output_data[key][nested_key], np.ndarray):
-                                output_data[key][nested_key] = output_data[key][nested_key].tolist()
-                            elif isinstance(output_data[key][nested_key], np.integer):
-                                output_data[key][nested_key] = int(output_data[key][nested_key])
-                            elif isinstance(output_data[key][nested_key], np.floating):
-                                output_data[key][nested_key] = float(output_data[key][nested_key])
-                
-                with open(args.output, 'w') as f:
-                    json.dump(output_data, f, indent=4)
-                print(f"Results saved to {args.output}")
-            except Exception as e:
-                print(f"Error saving results to {args.output}: {e}")
-        
-        # # Also test some negative samples
-        # print("\nTesting negative samples...")
-        # neg_sample_size = min(args.sample_size, len(negative_df))
-        # neg_sample = negative_df.sample(neg_sample_size)
-        # neg_sample_urls = neg_sample['url'].tolist()
-        
-        # neg_seq_results = sequential_test(neg_sample_urls, model, threshold, char2idx, device, overflow_bloom, verbose=args.verbose)
-        
-        # print("\nSequential testing complete. Entering interactive mode...")
     
     # Run batched inference if requested
     if args.batch:
@@ -654,55 +409,43 @@ def main():
         # Run batched inference with specified batch size
         batch_results = batch_inference(sample_urls, model, threshold, char2idx, device, overflow_bloom, batch_size=args.batch_size)
         
-        # Save results to file if specified
-        if args.output and 'batch_results' in locals():
-            try:
-                output_data = batch_results.copy()  # Create a copy to avoid modifying the original
-                # Add batch size and other metadata
-                output_data['batch_size'] = args.batch_size
-                output_data['sample_size'] = args.sample_size
-                
-                # Ensure all values are JSON serializable
-                for key in output_data:
-                    if isinstance(output_data[key], np.ndarray):
-                        output_data[key] = output_data[key].tolist()
-                    elif isinstance(output_data[key], np.integer):
-                        output_data[key] = int(output_data[key])
-                    elif isinstance(output_data[key], np.floating):
-                        output_data[key] = float(output_data[key])
-                    elif key == 'batch_latencies' and isinstance(output_data[key], list):
-                        # Convert any numpy values in the list to Python types
-                        output_data[key] = [float(x) if isinstance(x, (np.integer, np.floating)) else x for x in output_data[key]]
-                    elif isinstance(output_data[key], dict):
-                        # Handle nested dictionaries
-                        for nested_key in output_data[key]:
-                            if isinstance(output_data[key][nested_key], np.ndarray):
-                                output_data[key][nested_key] = output_data[key][nested_key].tolist()
-                            elif isinstance(output_data[key][nested_key], np.integer):
-                                output_data[key][nested_key] = int(output_data[key][nested_key])
-                            elif isinstance(output_data[key][nested_key], np.floating):
-                                output_data[key][nested_key] = float(output_data[key][nested_key])
-                
-                with open(args.output, 'w') as f:
-                    json.dump(output_data, f, indent=4)
-                print(f"Results saved to {args.output}")
-            except Exception as e:
-                print(f"Error saving results to {args.output}: {e}")
+        # Save results to json file if specified
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_name = f"batch_results_{args.sample_size}_{args.batch_size}_{timestamp}.json"
+        output_path = os.path.join(outputs_path, output_name)
+        try:
+            output_data = batch_results.copy()  # Create a copy to avoid modifying the original
+            # Add batch size and other metadata
+            output_data['batch_size'] = args.batch_size
+            output_data['sample_size'] = args.sample_size
+            
+            # Ensure all values are JSON serializable
+            def convert_to_serializable(obj):
+                if isinstance(obj, np.ndarray):
+                    return obj.tolist()
+                elif isinstance(obj, (np.integer, np.int64)):
+                    return int(obj)
+                elif isinstance(obj, (np.floating, np.float32, np.float64)):
+                    return float(obj)
+                elif isinstance(obj, dict):
+                    return {k: convert_to_serializable(v) for k, v in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_to_serializable(item) for item in obj]
+                else:
+                    return obj
+            
+            # Apply the conversion recursively to the entire data structure
+            output_data = convert_to_serializable(output_data)
+            
+            with open(output_path, 'w') as f:
+                json.dump(output_data, f, indent=4)
+            print(f"Results saved to {output_path}")
+        except Exception as e:
+            print(f"Error saving results to {output_path}: {e}")
         
-        # # Also test some negative samples
-        # print("\nTesting negative samples...")
-        # neg_sample_size = min(args.sample_size, len(negative_df))
-        # neg_sample = negative_df.sample(neg_sample_size)
-        # neg_sample_urls = neg_sample['url'].tolist()
-        
-        # neg_batch_results = batch_inference(neg_sample_urls, model, threshold, char2idx, device, overflow_bloom, batch_size=args.batch_size)
-        
-        print("\nBatched inference complete. Entering interactive mode...")
-    
     # Skip interactive mode if --no-interactive is specified
-    if args.no_interactive:
-        print("Interactive mode disabled. Exiting.")
-        return
+    if not args.interactive:
+        return 
     
     print("\n" + "=" * 50)
     print("Interactive Learned Bloom Filter Testing")
@@ -740,7 +483,10 @@ def main():
         print(f"Model prediction: {'Malicious' if model_prediction else 'Benign'}")
         
         if overflow_bloom is not None:
-            print(f"In overflow Bloom filter: {'Yes' if is_in_overflow else 'No'}")
+            if model_prediction:
+                print(f"Overflow Bloom filter: Not checked (model already predicted Malicious)")
+            else:
+                print(f"Overflow Bloom filter: {'Malicious' if is_in_overflow else 'Benign'}")
         
         print(f"Final result: {'Malicious' if final_result else 'Benign'}")
         

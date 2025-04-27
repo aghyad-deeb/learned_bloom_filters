@@ -4,7 +4,12 @@ I think in a production environment, the model is probably already loaded onto t
 
 Apr 27 
 Goals: 
-    - Make sure that the calculations are correct, specifically latency and throughput.
+    -  Make sure that the calculations are correct, specifically latency and throughput.
+        - [X] checked that the batch inference function works correctly.
     - Remove unnecessary code:
-        - Sequential if we can do batch size 1.
+        - [X] Sequential if we can do batch size 1.
         - Unncessary prints
+
+TODO:
+    - Fix the problem with incorporating michal's hash function.
+    - Run interactive multiple times to store the output.

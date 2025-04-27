@@ -100,8 +100,8 @@ class BloomFilter(Generic[KeyType]):
         "num_hashes",
         "bit_array",
         "num_items",
-        "_hasher1_intdigest",
-        "_hasher2_intdigest",
+        "_hasher1_seed",  # Store the seed instead of the lambda
+        "_hasher2_seed",  # Store the seed instead of the lambda
     )
 
     # Type alias for the internal hash function signature (bytes -> int)
@@ -149,14 +149,16 @@ class BloomFilter(Generic[KeyType]):
 
         self.num_items: int = 0
 
-        # Initialize hashers using xxh64_intdigest for direct integer output
-        # These always operate on bytes internally.
-        self._hasher1_intdigest: BloomFilter._BytesHasher = (
-            lambda b: xxhash.xxh64_intdigest(b, seed=XXH_SEED1)
-        )
-        self._hasher2_intdigest: BloomFilter._BytesHasher = (
-            lambda b: xxhash.xxh64_intdigest(b, seed=XXH_SEED2)
-        )
+        # Store seeds instead of lambdas for pickle compatibility
+        self._hasher1_seed: int = XXH_SEED1
+        self._hasher2_seed: int = XXH_SEED2
+
+    # Define hash functions as instance methods instead of lambdas
+    def _hash1(self, data: bytes) -> int:
+        return xxhash.xxh64_intdigest(data, seed=self._hasher1_seed)
+    
+    def _hash2(self, data: bytes) -> int:
+        return xxhash.xxh64_intdigest(data, seed=self._hasher2_seed)
 
     @staticmethod
     def _default_serializer(item: KeyType) -> bytes:
@@ -193,8 +195,8 @@ class BloomFilter(Generic[KeyType]):
 
     def _get_indices(self, item_bytes: bytes) -> List[int]:
         """Generates k indices using double hashing with xxhash on bytes."""
-        h1: int = self._hasher1_intdigest(item_bytes)
-        h2: int = self._hasher2_intdigest(item_bytes)
+        h1: int = self._hash1(item_bytes)  # Use instance method instead of lambda
+        h2: int = self._hash2(item_bytes)  # Use instance method instead of lambda
         m: int = self.size
         # Generate k indices using Kirsch-Mitzenmacher optimization
         return [(h1 + i * h2) % m for i in range(self.num_hashes)]
@@ -322,8 +324,10 @@ def load_data(training_dataset_path, negative_dataset_path, data_cap=None, rando
     # Load the dataset from the CSV file
     df = pd.read_csv(training_dataset_path)
 
-    # We assume df has columns: 'url' and 'type' (e.g., "benign", "defacement", "phishing").
-    # We'll create a binary label: 0 for benign, 1 for anything else.
+    # Filter to keep only 'benign' and 'phishing' types
+    df = df[df['type'].isin(['benign', 'phishing'])]
+    
+    # Create binary label: 0 for benign, 1 for phishing
     df['label'] = (df['type'] == 'phishing').astype(int)
 
     #! Limit the size of data for testing
@@ -343,7 +347,10 @@ def load_data(training_dataset_path, negative_dataset_path, data_cap=None, rando
     
     # Load negative dataset
     negative_df = pd.read_csv(negative_dataset_path)
-    negative_df['label'] = (negative_df['type'] == 'phishing').astype(int)
+    # Filter to keep only 'benign' URLs if other types exist
+    negative_df = negative_df[negative_df['type'] == 'benign']
+    negative_df['label'] = 0  # All entries in negative dataset are benign (0)
+    
     # Shuffle the negative dataset
     negative_df = negative_df.sample(frac=1, random_state=random_seed).reset_index(drop=True)
     # Assert that all labels in the negative dataset are 0
@@ -457,7 +464,7 @@ def evaluate_model(model, X_test, y_test, tau):
     
     return test_probs, test_labels, test_predictions
 
-def build_overflow_filter(df, model, tau, char2idx, device, overflow_bloom_filter_desired_fpr):
+def build_overflow_filter(df, model, tau, char2idx, device, overflow_bloom_filter_desired_fpr, batch_size_for_getting_false_negatives=2**10):
     print("\nBuilding overflow Bloom filter...")
     # The overflow Bloom filter will store those URLs that are actual positives but were predicted negative.
     # In a real system, we would store the keys that were "missed" by the model.
@@ -466,17 +473,16 @@ def build_overflow_filter(df, model, tau, char2idx, device, overflow_bloom_filte
     labels = df['label'].tolist()
     
     # Process URLs in batches for better efficiency
-    batch_size = 2**10
     num_samples = len(urls)
-    num_batches = (num_samples + batch_size - 1) // batch_size  # Ceiling division
+    num_batches = (num_samples + batch_size_for_getting_false_negatives - 1) // batch_size_for_getting_false_negatives  # Ceiling division
     
-    print(f"Processing {num_samples} URLs in {num_batches} batches (batch size: {batch_size})...")
+    print(f"Processing {num_samples} URLs in {num_batches} batches (batch size: {batch_size_for_getting_false_negatives})...")
     model.eval()
     
     for batch_idx in tqdm(range(num_batches)):
         # Get batch indices
-        start_idx = batch_idx * batch_size
-        end_idx = min(start_idx + batch_size, num_samples)
+        start_idx = batch_idx * batch_size_for_getting_false_negatives
+        end_idx = min(start_idx + batch_size_for_getting_false_negatives, num_samples)
         
         # Extract batch data
         batch_urls = urls[start_idx:end_idx]
@@ -497,19 +503,14 @@ def build_overflow_filter(df, model, tau, char2idx, device, overflow_bloom_filte
     
     # Calculate optimal Bloom filter parameters
     n = len(overflow_urls)  # number of elements to store
-    p = overflow_bloom_filter_desired_fpr  # desired false positive rate
-    m = int(-n * math.log(p) / (math.log(2)**2))  # optimal number of bits
-    k = int(m/n * math.log(2)) if n > 0 else 1  # optimal number of hash functions
-    k = max(k, 1)  # ensure at least one hash function
 
     print(f"Adding {len(overflow_urls)} false negatives to overflow Bloom filter...")
-    overflow_bloom = BloomFilter(m, k)
+    overflow_bloom = BloomFilter(n, overflow_bloom_filter_desired_fpr)
     for url in tqdm(overflow_urls):
         overflow_bloom.add(url)
 
     print(f"Number of false negatives stored in the overflow Bloom filter: {len(overflow_urls)}")
-    # print(f"{m_per_element=}")
-    total_bits = m/8
+    total_bits = overflow_bloom.bit_size / 8
     print(f"Estimated memory usage of overflow Bloom filter: {total_bits:.2f} bytes")
     
     return overflow_bloom
@@ -574,6 +575,7 @@ def main():
     # training hyperparameters
     num_epochs = 5
     batch_size = 64
+    batch_size_for_getting_false_negatives = 2**10
     learning_rate = 0.001
     
     # Create timestamp for this run
@@ -612,7 +614,7 @@ def main():
     print(f"Using device: {device}")
     
     # Load data
-    # data_cap = 10**4 * 2
+    # data_cap = 2**7
     data_cap = None
     train_df, val_df, test_df, negative_df = load_data(training_dataset_path, negative_dataset_path, data_cap, random_seed)
     print(f"Train set size: {len(train_df)}")
@@ -699,7 +701,7 @@ def main():
     # of the total fpr.
     overflow_bloom_filter_desired_fpr = desired_fpr - model_desired_fpr
     # Build overflow bloom filter
-    overflow_bloom = build_overflow_filter(test_df, model, threshold, char2idx, device, overflow_bloom_filter_desired_fpr)
+    overflow_bloom = build_overflow_filter(test_df, model, threshold, char2idx, device, overflow_bloom_filter_desired_fpr, batch_size_for_getting_false_negatives)
     
     # Save overflow bloom filter
     import pickle
