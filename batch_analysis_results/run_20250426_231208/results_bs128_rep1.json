@@ -1,0 +1,39 @@
+{
+    "model_positives": 105,
+    "bloom_positives": 6,
+    "total_positives": 111,
+    "failed_urls": [],
+    "successful_urls": 1000,
+    "timing": {
+        "preprocessing_time": 1.834869384765625,
+        "inference_time": 210.22462844848633,
+        "bloom_filter_time": 2.807140350341797,
+        "total_time": 298.9180088043213,
+        "warmup_time": 65.72103500366211,
+        "preprocessing_per_url": 0.001834869384765625,
+        "inference_per_url": 0.21022462844848633,
+        "bloom_filter_per_url": 0.002807140350341797,
+        "total_per_url": 0.2989180088043213
+    },
+    "batch_latencies": [
+        56.30326271057129,
+        20.33686637878418,
+        19.704103469848633,
+        19.118785858154297,
+        19.346952438354492,
+        19.445180892944336,
+        19.25969123840332,
+        45.06874084472656
+    ],
+    "batch_stats": {
+        "min_latency": 19.118785858154297,
+        "max_latency": 56.30326271057129,
+        "avg_latency": 27.32294797897339,
+        "median_latency": 19.574642181396484,
+        "p95_latency": 52.37118005752563,
+        "p99_latency": 55.51684617996216,
+        "std_dev": 13.782343952726873
+    },
+    "batch_size": 128,
+    "sample_size": 1000
+}
