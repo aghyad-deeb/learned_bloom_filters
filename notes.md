@@ -13,3 +13,7 @@ Goals:
 TODO:
     - Fix the problem with incorporating michal's hash function.
     - Run interactive multiple times to store the output.
+
+May 1 2025:
+    * Try doing adjusting the overflow bloomfilter vs model FPR threshold (the paper arbitrarly sets it to 50% for each)
+    * the traditional bloom filter should have its size shown in the model size vs throughput graph.

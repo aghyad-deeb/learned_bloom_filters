@@ -15,6 +15,8 @@ import json
 import time
 import datetime
 from tqdm import tqdm
+import math
+import bitarray
 
 # Import necessary classes and functions from train_and_run.py
 from train_and_run import URLClassifier, BloomFilter, url_to_indices, build_vocab, load_data
@@ -149,6 +151,59 @@ def get_run_dirs(model_dir):
     # Sort by folder name (which includes timestamp) in reverse order
     return sorted(runs, reverse=True)
 
+def calculate_size_metrics(model, overflow_bloom, run_dir):
+    """
+    Calculate size metrics for the model, overflow bloom filter, and traditional bloom filter.
+    
+    Args:
+        model: The trained model
+        overflow_bloom: The overflow Bloom filter
+        model_save_path: Path to the saved model file (used to find hyperparameters)
+        
+    Returns:
+        Dictionary containing size metrics in bytes
+    """
+    size_metrics = {
+        'model_size_bytes': 0,
+        'overflow_bloom_filter_size_bytes': 0,
+        'traditional_bloom_filter_size_bytes': 0
+    }
+    
+    # Calculate model size
+    model_size = sum(p.numel() * p.element_size() for p in model.parameters())
+    size_metrics['model_size_bytes'] = model_size
+    
+    # Calculate overflow bloom filter size if available
+    if overflow_bloom is not None:
+        size_metrics['overflow_bloom_filter_size_bytes'] = overflow_bloom.__sizeof__()
+    
+    # Calculate traditional bloom filter size using test dataset
+    data_dir = "data"
+    training_dataset_name = "training_dataset.csv"
+    negative_dataset_name = "negative_dataset.csv"
+    training_dataset_path = os.path.join(data_dir, training_dataset_name)
+    negative_dataset_path = os.path.join(data_dir, negative_dataset_name)
+    
+    # Get desired FPR and random seed from hyperparameters
+    hyperparams_path = os.path.abspath(os.path.join(run_dir, "hyperparams.json"))
+    print(f"Hyperparams path: {hyperparams_path}")
+    hyperparams = load_hyperparams(hyperparams_path)
+    desired_fpr = hyperparams['desired_fpr']  # Default to 1% if not found
+    random_seed = hyperparams['random_seed']  # Default to 42 if not found
+    
+    # Load test dataset with the same random seed used during training
+    _, _, test_df, _ = load_data(training_dataset_path, negative_dataset_path, random_seed=random_seed)
+    
+    # Get number of positive items in test set
+    n_positive = np.sum(test_df['label'] == 1)
+    
+    # Calculate traditional bloom filter size using the same formula as in train_and_run.py
+    m_per_element = -math.log(desired_fpr) / (math.log(2)**2)
+    traditional_size = n_positive * m_per_element / 8  # Convert bits to bytes
+    size_metrics['traditional_bloom_filter_size_bytes'] = traditional_size
+    
+    return size_metrics
+
 def batch_inference(urls, model, threshold, char2idx, device, overflow_bloom=None, batch_size=64, return_detailed_results=False):
     """
     Process multiple URLs using batched model inference for better parallelization.
@@ -185,7 +240,7 @@ def batch_inference(urls, model, threshold, char2idx, device, overflow_bloom=Non
             'inference_per_batch_time_list': [],
             'overflow_bloom_filter_per_batch_time_list': [],
             'batch_total_latency_per_batch_time_list': [],
-        },
+        }
     }
     
     # Add storage for detailed URL results if requested
@@ -312,7 +367,58 @@ def batch_inference(urls, model, threshold, char2idx, device, overflow_bloom=Non
     
     return results
 
+def measure_traditional_bloom_performance(urls, desired_fpr, test_df):
+    """
+    Measure the performance of a traditional Bloom filter on a set of URLs.
     
+    Args:
+        urls: List of URLs to test
+        desired_fpr: Desired false positive rate
+        test_df: DataFrame containing the test data
+        
+    Returns:
+        Dictionary with results and timing information
+    """
+    # Get number of positive items in test set
+    n_positive = np.sum(test_df['label'] == 1)
+    
+    # Create and populate traditional Bloom filter
+    print("\nBuilding traditional Bloom filter...")
+    traditional_bloom = BloomFilter(n_positive, desired_fpr)
+    
+    # Add all positive URLs from test set
+    positive_urls = test_df[test_df['label'] == 1]['url'].tolist()
+    for url in tqdm(positive_urls, desc="Adding URLs to traditional Bloom filter"):
+        traditional_bloom.add(url)
+    
+    # Prepare results dictionary
+    results = {
+        'traditional_bloom_positives': 0,
+        'timing': {
+            'total_time': 0,
+            'time_per_url': 0,
+            'urls_per_second': 0
+        }
+    }
+    
+    # Test URLs against traditional Bloom filter
+    print("\nTesting URLs against traditional Bloom filter...")
+    start_time = time.time()
+    
+    for url in tqdm(urls, desc="Testing URLs"):
+        if url in traditional_bloom:
+            results['traditional_bloom_positives'] += 1
+    
+    end_time = time.time()
+    total_time = end_time - start_time
+    
+    # Calculate timing metrics
+    results['timing']['total_time'] = total_time * 1000  # Convert to ms
+    results['timing']['time_per_url'] = (total_time * 1000) / len(urls)  # ms per URL
+    results['timing']['urls_per_second'] = len(urls) / total_time
+    
+    return results
+
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Interactive Learned Bloom Filter Testing')
@@ -409,9 +515,19 @@ def main():
         # Run batched inference with specified batch size
         batch_results = batch_inference(sample_urls, model, threshold, char2idx, device, overflow_bloom, batch_size=args.batch_size)
         
+        # Calculate size metrics
+        batch_results['size_metrics'] = calculate_size_metrics(model, overflow_bloom, run_dir)
+        
+        # Measure traditional Bloom filter performance
+        print("\nMeasuring traditional Bloom filter performance...")
+        traditional_results = measure_traditional_bloom_performance(sample_urls, hyperparams['desired_fpr'], test_df)
+        
+        # Add traditional Bloom filter results to batch results
+        batch_results['traditional_bloom'] = traditional_results
+        
         # Save results to json file if specified
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_name = f"batch_results_{args.sample_size}_{args.batch_size}_{timestamp}.json"
+        # timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_name = f"batch_results_{args.sample_size}_{args.batch_size}.json"
         output_path = os.path.join(outputs_path, output_name)
         try:
             output_data = batch_results.copy()  # Create a copy to avoid modifying the original

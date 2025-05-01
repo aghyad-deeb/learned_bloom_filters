@@ -564,10 +564,22 @@ def load_model(model, load_path, device):
 
 def main():
     # model hyperparameters
-    embedding_dim = 32
-    hidden_dim = 16
-    # embedding_dim = 8
-    # hidden_dim = 4
+    default_embedding_dim = 32
+    default_hidden_dim = 16
+    
+    # Parse command line arguments for model hyperparameters
+    import argparse
+    parser = argparse.ArgumentParser(description='Train and evaluate learned Bloom filters')
+    parser.add_argument('--embedding_dim', type=int, default=default_embedding_dim, 
+                        help='Dimension of character embeddings')
+    parser.add_argument('--hidden_dim', type=int, default=default_hidden_dim,
+                        help='Dimension of hidden state in GRU')
+    args = parser.parse_args()
+    
+    # Update hyperparameters from command line arguments
+    embedding_dim = args.embedding_dim
+    hidden_dim = args.hidden_dim
+
 
     # training hyperparameters
     num_epochs = 5
