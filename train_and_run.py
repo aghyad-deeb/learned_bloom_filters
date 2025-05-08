@@ -330,6 +330,11 @@ def load_data(training_dataset_path, negative_dataset_path, data_cap=None, rando
     # Create binary label: 0 for benign, 1 for phishing
     df['label'] = (df['type'] == 'phishing').astype(int)
 
+    original_data_size = len(df)
+    if data_cap is not None and data_cap > original_data_size:
+        print(f"Warning: data_cap ({data_cap}) is larger than the available data size ({original_data_size}). Using all available data.")
+        # data_cap = original_data_size # This will be effectively handled by iloc
+    
     #! Limit the size of data for testing
     if data_cap is not None:
         df = df.iloc[:data_cap]
@@ -574,11 +579,14 @@ def main():
                         help='Dimension of character embeddings')
     parser.add_argument('--hidden_dim', type=int, default=default_hidden_dim,
                         help='Dimension of hidden state in GRU')
+    parser.add_argument('--data_cap', type=int, default=None,
+                        help='Maximum number of samples to use from dataset (None means use all data)')
     args = parser.parse_args()
     
     # Update hyperparameters from command line arguments
     embedding_dim = args.embedding_dim
     hidden_dim = args.hidden_dim
+    data_cap = args.data_cap
 
 
     # training hyperparameters
@@ -590,23 +598,24 @@ def main():
     # Create timestamp for this run
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     
-    # Include model architecture in the run directory name
+    # Include model architecture and data size in the run directory name
     model_config = f"emb{embedding_dim}_hid{hidden_dim}"
+    data_config = f"_data{data_cap}" if data_cap is not None else ""
+    model_run_dir = os.path.join(model_dir, f"run_{timestamp}{data_config}_{model_config}")
     
     data_dir = "data"
     model_dir = "models"
-    model_run_dir = os.path.join(model_dir, f"run_{timestamp}_{model_config}")
-    
-    training_dataset_name = "training_dataset.csv"
-    negative_dataset_name = "negative_dataset.csv"
     model_save_path = os.path.join(model_run_dir, "url_classifier.pt")
     overflow_bloom_filter_save_path = os.path.join(model_run_dir, "overflow_bloom.pkl")
     threshold_save_path = os.path.join(model_run_dir, "threshold.txt")
     hyperparams_save_path = os.path.join(model_run_dir, "hyperparams.json")
     
+    training_dataset_name = "training_dataset.csv"
+    negative_dataset_name = "negative_dataset.csv"
+    
     training_dataset_path = os.path.join(data_dir, training_dataset_name)
     negative_dataset_path = os.path.join(data_dir, negative_dataset_name)
-    
+
     # Create model run directory
     os.makedirs(model_run_dir, exist_ok=True)
     # print(f"Saving model artifacts to: {model_run_dir}")    
@@ -623,13 +632,20 @@ def main():
     print(f"Using device: {device}")
     
     # Load data
-    # data_cap = 2**7
-    data_cap = None
     train_df, val_df, test_df, negative_df = load_data(training_dataset_path, negative_dataset_path, data_cap, random_seed)
     print(f"Train set size: {len(train_df)}")
     print(f"Val set size: {len(val_df)}")
     print(f"Test set size: {len(test_df)}")
     print(f"Negative set size: {len(negative_df)}")
+    
+    # Update data_cap to reflect the actual number of samples used from the primary dataset if necessary
+    actual_data_used_from_primary = len(train_df) + len(val_df) + len(test_df)
+    if args.data_cap is None:
+        print(f"Note: No data_cap specified. Actual data used from primary dataset: {actual_data_used_from_primary}.")
+        data_cap = actual_data_used_from_primary 
+    elif args.data_cap != actual_data_used_from_primary:
+        print(f"Note: Initial data_cap ({args.data_cap}) has been adjusted to actual data used from primary dataset: {actual_data_used_from_primary}.")
+        data_cap = actual_data_used_from_primary
     
     # Build vocabulary
     char2idx, idx2char = build_vocab([train_df, val_df, test_df, negative_df])
@@ -652,7 +668,8 @@ def main():
         "random_seed": random_seed,
         "vocab_size": vocab_size,
         "timestamp": timestamp,
-        "device": str(device)
+        "device": str(device),
+        "data_cap": data_cap
     }
     
     with open(hyperparams_save_path, 'w') as f:

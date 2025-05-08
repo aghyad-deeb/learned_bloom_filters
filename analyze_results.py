@@ -124,7 +124,7 @@ def load_model_hyperparams(model_path):
             return json.load(f)
     return None
 
-def process_model_results(model_path, metrics_to_plot=None):
+def process_model_results(model_path, metrics_to_plot=None, results_dir="inference_outputs", cpu=False, show_traditional=True, log_scale=False):
     """
     Process results for a single model and generate its plots.
     
@@ -136,7 +136,7 @@ def process_model_results(model_path, metrics_to_plot=None):
         Dictionary with model analysis results
     """
     # Find all JSON result files in the model's inference_outputs directory
-    outputs_dir = os.path.join(model_path, "inference_outputs")
+    outputs_dir = os.path.join(model_path, results_dir)
     if not os.path.exists(outputs_dir):
         print(f"No inference outputs found for model at {model_path}")
         return None
@@ -165,8 +165,9 @@ def process_model_results(model_path, metrics_to_plot=None):
     
     # Generate individual model plots
     metrics_suffix = '_'.join(metrics_to_plot) if metrics_to_plot else 'total'
-    save_path = os.path.join(outputs_dir, f"latency_throughput_graphs_{metrics_suffix}.png")
-    plot_analysis_results(analyses, save_path, metrics_to_plot)
+    save_name = f"latency_throughput_graphs_{metrics_suffix}_cpu.png" if cpu else f"latency_throughput_graphs_{metrics_suffix}.png"
+    save_path = os.path.join(outputs_dir, save_name)
+    plot_analysis_results(analyses, save_path, metrics_to_plot, model_path=model_path, show_traditional=show_traditional, log_scale=log_scale)
     
     # Return model analysis data for comparison
     return {
@@ -264,10 +265,13 @@ def plot_model_comparisons(comparison_data, save_path=None, show_traditional=Tru
         print("No model comparison data provided for plotting")
         return
     
-    # Convert model sizes to kilobytes
+    # Convert sizes to kilobytes
     model_sizes_kb = [size / 1024 for size in comparison_data['model_sizes']]
     overflow_bloom_filter_sizes_kb = [size / 1024 for size in comparison_data['overflow_bloom_sizes']]
     traditional_bloom_size_kb = comparison_data['traditional_bloom_size'] / 1024
+    
+    # Calculate total predictor sizes (model + overflow Bloom filter)
+    predictor_sizes_kb = [model + bloom for model, bloom in zip(model_sizes_kb, overflow_bloom_filter_sizes_kb)]
     
     # Create figure with subplots
     if len(comparison_data['model_keys']) > 2:  # Only check for outliers if we have enough models
@@ -292,12 +296,12 @@ def plot_model_comparisons(comparison_data, save_path=None, show_traditional=Tru
     plt.title('Model Size vs Overflow Bloom Filter Size')
     plt.grid(True)
     
-    # Plot 2: Model Size vs Latency for different batch sizes
+    # Plot 2: Predictor Size vs Latency for different batch sizes
     plt.subplot(n_rows, 2, 2)
     for batch_size in sorted(comparison_data['batch_sizes']):
         batch_latencies = [comparison_data['latencies'][batch_size].get(key, 0) 
                           for key in comparison_data['model_keys']]
-        plt.scatter(model_sizes_kb, batch_latencies, label=f'Learned (Batch {batch_size})')
+        plt.scatter(predictor_sizes_kb, batch_latencies, label=f'Learned (Batch {batch_size})')
     
     if show_traditional:
         # Add point for traditional Bloom filter with its size
@@ -311,12 +315,12 @@ def plot_model_comparisons(comparison_data, save_path=None, show_traditional=Tru
     plt.legend()
     plt.grid(True)
     
-    # Plot 3: Model Size vs Throughput for different batch sizes
+    # Plot 3: Predictor Size vs Throughput for different batch sizes
     plt.subplot(n_rows, 2, 3)
     for batch_size in sorted(comparison_data['batch_sizes']):
         batch_throughputs = [comparison_data['throughputs'][batch_size].get(key, 0) 
                            for key in comparison_data['model_keys']]
-        plt.scatter(model_sizes_kb, batch_throughputs, label=f'Learned (Batch {batch_size})')
+        plt.scatter(predictor_sizes_kb, batch_throughputs, label=f'Learned (Batch {batch_size})')
     
     if show_traditional:
         # Add point for traditional Bloom filter with its size
@@ -326,7 +330,7 @@ def plot_model_comparisons(comparison_data, save_path=None, show_traditional=Tru
         plt.xscale('log')
     plt.xlabel(f'Predictor Size (KB) {log_scale_str}')
     plt.ylabel('Throughput (URLs/second)')
-    plt.title('Size vs Throughput')
+    plt.title('Predictor Size vs Throughput')
     plt.legend()
     plt.grid(True)
     
@@ -400,7 +404,7 @@ def plot_model_comparisons(comparison_data, save_path=None, show_traditional=Tru
     else:
         plt.show()
 
-def plot_analysis_results(analysis_list, save_path=None, metrics_to_plot=None, show_traditional=True, log_scale=False):
+def plot_analysis_results(analysis_list, save_path=None, metrics_to_plot=None, show_traditional=False, log_scale=False, model_path=None):
     """
     Create plots for throughputs and latency from multiple analysis dictionaries.
     
@@ -442,9 +446,9 @@ def plot_analysis_results(analysis_list, save_path=None, metrics_to_plot=None, s
         
         if i == 0:
             # First plot is always throughput
-            plt.scatter(batch_sizes, throughputs, c='blue', alpha=0.6, label='Learned Model')
+            plt.plot(batch_sizes, throughputs, color='blue', marker='o', label='Learned Model')
             if show_traditional:
-                plt.scatter(batch_sizes, traditional_throughputs, c='red', alpha=0.6, label='Traditional Bloom')
+                plt.plot(batch_sizes, traditional_throughputs, color='red', marker='x', label='Traditional Bloom')
             plt.xlabel('Batch Size')
             plt.ylabel('Throughput (URLs/second)')
             plt.title('Batch Size vs. Throughput')
@@ -473,9 +477,9 @@ def plot_analysis_results(analysis_list, save_path=None, metrics_to_plot=None, s
             else:
                 continue
             
-            plt.scatter(batch_sizes, latencies, c=colors[(i - 1) % len(colors)], alpha=0.6, label='Learned Model')
+            plt.plot(batch_sizes, latencies, color=colors[(i - 1) % len(colors)], marker='o', label='Learned Model')
             if show_traditional and traditional_latencies:
-                plt.scatter(batch_sizes, traditional_latencies, c='red', alpha=0.6, label='Traditional Bloom')
+                plt.plot(batch_sizes, traditional_latencies, color='red', marker='x', label='Traditional Bloom')
             plt.xlabel('Batch Size')
             plt.ylabel('Average Latency (ms)')
             plt.title(f'Batch Size vs. {title}')
@@ -483,6 +487,7 @@ def plot_analysis_results(analysis_list, save_path=None, metrics_to_plot=None, s
             plt.grid(True)
     
     plt.tight_layout()
+    plt.suptitle(f"Model: {model_path}")
     
     # Save or show the plot
     if save_path:
@@ -501,8 +506,12 @@ def main():
                              'tensor (tensor movement to device), bloom (bloom filter lookup)')
     parser.add_argument('--traditional', action='store_true',
                         help='Show traditional Bloom filter results in plots')
+    parser.add_argument('--traditional-individual', action='store_true',
+                        help='Show traditional Bloom filter results in plots')
     parser.add_argument('--log-scale', action='store_true',
                         help='Use logarithmic scale for model size axis')
+    parser.add_argument('--cpu', action='store_true',
+                        help='Use the cpu output directory json files')
     
     args = parser.parse_args()
     
@@ -526,7 +535,8 @@ def main():
         model_analyses = []
         for model_dir in model_dirs:
             print(f"\nProcessing model: {os.path.basename(model_dir)}")
-            model_analysis = process_model_results(model_dir, args.metrics)
+            results_dir = "inference_outputs" if not args.cpu else "inference_outputs_cpu"
+            model_analysis = process_model_results(model_dir, args.metrics, results_dir, args.cpu, show_traditional=args.traditional_individual, log_scale=args.log_scale)
             if model_analysis:
                 model_analyses.append(model_analysis)
         
@@ -534,7 +544,8 @@ def main():
             # Prepare and plot model comparisons
             comparison_data = prepare_model_comparison_data(model_analyses)
             metrics_suffix = '_'.join(args.metrics)
-            save_path = os.path.join(args.models_path, f"model_comparison_{metrics_suffix}.png")
+            output_name = f"model_comparison_{metrics_suffix}_cpu.png" if args.cpu else f"model_comparison_{metrics_suffix}.png"
+            save_path = os.path.join(args.models_path, output_name)
             print(f"{args.log_scale=}")
             plot_model_comparisons(comparison_data, save_path, args.traditional, args.log_scale)
     

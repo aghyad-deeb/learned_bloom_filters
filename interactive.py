@@ -190,9 +190,10 @@ def calculate_size_metrics(model, overflow_bloom, run_dir):
     hyperparams = load_hyperparams(hyperparams_path)
     desired_fpr = hyperparams['desired_fpr']  # Default to 1% if not found
     random_seed = hyperparams['random_seed']  # Default to 42 if not found
+    data_cap = hyperparams.get('data_cap', None)  # Get data_cap from hyperparams if available
     
     # Load test dataset with the same random seed used during training
-    _, _, test_df, _ = load_data(training_dataset_path, negative_dataset_path, random_seed=random_seed)
+    _, _, test_df, _ = load_data(training_dataset_path, negative_dataset_path, data_cap=data_cap, random_seed=random_seed)
     
     # Get number of positive items in test set
     n_positive = np.sum(test_df['label'] == 1)
@@ -427,7 +428,8 @@ def main():
     parser.add_argument('--batch-size', type=int, default=64, help='Size of batches for model inference')
     parser.add_argument('--sample-size', type=int, default=100, help='Number of samples to test')
     parser.add_argument('--verbose', action='store_true', help='Show detailed results for sequential testing')
-    parser.add_argument('--interactive', action='store_true', default=False, help='Enable interactive mode (useful for batch testing)')
+    parser.add_argument('--interactive', action='store_true', help='Enable interactive mode (useful for batch testing)')
+    parser.add_argument('--cpu', action='store_true', help='Run the model on cpu')
     args = parser.parse_args()
     
     data_dir = "data"
@@ -451,20 +453,26 @@ def main():
                 f"Latest run link {latest_run_link} points to " \
                 f"{os.path.realpath(latest_run_link)}, but run_dir is {run_dir}"
     
+    run_on_cpu = args.cpu
+    
     # Set up paths for model artifacts
     model_save_path = os.path.join(run_dir, "url_classifier.pt")
     overflow_bloom_filter_path = os.path.join(run_dir, "overflow_bloom.pkl")
     threshold_path = os.path.join(run_dir, "threshold.txt")
     hyperparams_path = os.path.join(run_dir, "hyperparams.json")
-    outputs_path = os.path.join(run_dir, "inference_outputs")
+    outputs_dir_name = "inference_outputs_cpu" if run_on_cpu else "inference_outputs"
+    outputs_path = os.path.join(run_dir,outputs_dir_name)
     if not os.path.exists(outputs_path):
         os.makedirs(outputs_path)
     # Check for CUDA, MPS, or CPU availability
-    device = torch.device(
-        'cuda' if torch.cuda.is_available()
-            else 'mps' if torch.backends.mps.is_available()
-                else 'cpu'
-    )
+    if run_on_cpu:
+        device = torch.device("cpu")
+    else:
+        device = torch.device(
+            'cuda' if torch.cuda.is_available()
+                else 'mps' if torch.backends.mps.is_available()
+                    else 'cpu'
+        )
     
     # Load hyperparameters
     hyperparams = load_hyperparams(hyperparams_path)
