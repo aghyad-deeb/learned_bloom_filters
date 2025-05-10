@@ -1,0 +1,51 @@
+{
+    "model_positives": 186,
+    "bloom_positives": 26,
+    "total_positives": 212,
+    "num_successful_urls": 1024,
+    "failed_urls": [],
+    "timing": {
+        "total_preprocessing_time": 1.8150806427001953,
+        "preprocessing_time_per_url": 0.0017725396901369095,
+        "warmup_batch_time": 1.1341571807861328,
+        "moving_tensor_to_device_per_batch_time_list": [
+            0.7269382476806641,
+            0.6711483001708984,
+            0.823974609375,
+            0.6449222564697266
+        ],
+        "inference_per_batch_time_list": [
+            28.359174728393555,
+            24.05691146850586,
+            34.92307662963867,
+            22.823095321655273
+        ],
+        "overflow_bloom_filter_per_batch_time_list": [
+            0.43892860412597656,
+            0.35572052001953125,
+            0.3509521484375,
+            0.35881996154785156
+        ],
+        "batch_total_latency_per_batch_time_list": [
+            29.626131057739258,
+            25.127887725830078,
+            36.13686561584473,
+            23.86784553527832
+        ]
+    },
+    "size_metrics": {
+        "model_size_bytes": 875012,
+        "overflow_bloom_filter_size_bytes": 2821,
+        "traditional_bloom_filter_size_bytes": 22462.584307360594
+    },
+    "traditional_bloom": {
+        "traditional_bloom_positives": 210,
+        "timing": {
+            "total_time": 1.7957687377929688,
+            "time_per_url": 0.001753680408000946,
+            "urls_per_second": 570229.3276686139
+        }
+    },
+    "batch_size": 256,
+    "sample_size": 1024
+}

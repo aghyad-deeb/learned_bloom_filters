@@ -3,6 +3,8 @@ import torch
 import numpy as np
 from tqdm import tqdm
 import pickle
+import argparse
+import json
 from train_and_run import (
     load_data, build_vocab, prepare_dataset, URLClassifier,
     build_overflow_filter,
@@ -89,23 +91,56 @@ def evaluate_model_batched(model, X_test, y_test, tau, batch_size=1024):
     return test_probs, test_labels, test_predictions
 
 def main():
-    # Model configuration
-    embedding_dim = 256
-    hidden_dim = 128
-    model_desired_fpr = 0.005  # Half of total desired FPR
-    overflow_bloom_filter_desired_fpr = 0.005  # Other half
-    batch_size_for_getting_false_negatives = 2**10  # Match original script
-    random_seed = 42  # Match original script
-    batch_size = 1024  # Batch size for validation set processing
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Build overflow Bloom filter for learned Bloom filters')
+    parser.add_argument('--model_dir', type=str, default="models/run_20250509_033949_data3200000_emb64_hid32",
+                        help='Directory containing the model and hyperparameters')
+    args = parser.parse_args()
     
     # Paths
     data_dir = "data"
-    model_dir = "models/run_20250429_123027_emb256_hid128"  # Last model directory
-    training_dataset_path = os.path.join(data_dir, "training_dataset.csv")
+    model_dir = args.model_dir
+    training_dataset_path = os.path.join(data_dir, "training_dataset_extended_balanced.csv")
     negative_dataset_path = os.path.join(data_dir, "negative_dataset.csv")
     model_path = os.path.join(model_dir, "url_classifier.pt")
     threshold_path = os.path.join(model_dir, "threshold.txt")
     overflow_bloom_filter_save_path = os.path.join(model_dir, "overflow_bloom.pkl")
+    hyperparams_path = os.path.join(model_dir, "hyperparams.json")
+    
+    # Load hyperparameters from JSON file
+    if os.path.exists(hyperparams_path):
+        with open(hyperparams_path, 'r') as f:
+            hyperparams = json.load(f)
+        print(f"Loaded hyperparameters from {hyperparams_path}")
+    else:
+        print(f"Warning: Hyperparameters file not found at {hyperparams_path}. Using default values.")
+        hyperparams = {}
+    
+    # Set hyperparameters, using defaults if not in the JSON file
+    embedding_dim = hyperparams["embedding_dim"]
+    hidden_dim = hyperparams["hidden_dim"]
+    batch_size = hyperparams["batch_size"]  # Batch size for validation set processing
+    batch_size_for_getting_false_negatives = 2**10  # Match original script
+    
+    # Use the half of the desired_fpr for model and half for bloom filter
+    desired_fpr = hyperparams["desired_fpr"]
+    model_desired_fpr = desired_fpr / 2
+    overflow_bloom_filter_desired_fpr = desired_fpr / 2
+    
+    # Use random seed from hyperparameters or default
+    random_seed = hyperparams["random_seed"]
+    
+    # Command line argument overrides the hyperparameter
+    data_cap = hyperparams["data_cap"]
+    
+    print("Using hyperparameters:")
+    print(f"  embedding_dim: {embedding_dim}")
+    print(f"  hidden_dim: {hidden_dim}")
+    print(f"  batch_size: {batch_size}")
+    print(f"  model_desired_fpr: {model_desired_fpr}")
+    print(f"  overflow_bloom_filter_desired_fpr: {overflow_bloom_filter_desired_fpr}")
+    print(f"  random_seed: {random_seed}")
+    print(f"  data_cap: {data_cap}")
     
     # Check for CUDA, MPS, or CPU availability
     device = torch.device(
@@ -115,12 +150,14 @@ def main():
     )
     print(f"Using device: {device}")
     
-    # Load data with same random seed
+    # Load data with same random seed and data_cap
     train_df, val_df, test_df, negative_df = load_data(
         training_dataset_path, 
         negative_dataset_path,
+        data_cap=data_cap,
         random_seed=random_seed
     )
+    print(f"Training set size: {len(train_df)}")
     print(f"Validation set size: {len(val_df)}")
     print(f"Test set size: {len(test_df)}")
     

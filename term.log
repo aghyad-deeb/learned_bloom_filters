@@ -1,0 +1,388 @@
+ding/cs2241/project/learned_bloom_filters $ ./train_and_run.sh
+./train_and_run.sh: line 4: declare: -A: invalid option
+declare: usage: declare [-afFirtx] [-p] [name[=value] ...]
+Using device: mps
+Dataset sizes: train=7500, validation=1250, test=3750
+Train set size: 7500
+Val set size: 1250
+Test set size: 3750
+Negative set size: 691476
+Hyperparameters saved to models/run_20250508_205728_data12500_emb32_hid16/hyperparams.json
+
+Starting training for 5 epochs...
+Epoch 1/5: 100%|█| 118/118 [00:08<00:00, 14.71it/s, loss=0.6435, acc=61.0
+Epoch 1/5 completed in 8.03s
+Average loss: 0.6536
+Training accuracy: 61.04%
+Epoch 2/5: 100%|█| 118/118 [00:06<00:00, 18.65it/s, loss=0.5707, acc=75.9
+Epoch 2/5 completed in 6.33s
+Average loss: 0.5079
+Training accuracy: 75.92%
+Epoch 3/5: 100%|█| 118/118 [00:06<00:00, 18.96it/s, loss=0.5314, acc=78.7
+Epoch 3/5 completed in 6.23s
+Average loss: 0.4569
+Training accuracy: 78.76%
+Epoch 4/5: 100%|█| 118/118 [00:06<00:00, 17.71it/s, loss=0.5290, acc=80.2
+Epoch 4/5 completed in 6.66s
+Average loss: 0.4293
+Training accuracy: 80.28%
+Epoch 5/5: 100%|█| 118/118 [00:06<00:00, 19.54it/s, loss=0.2218, acc=81.6
+Epoch 5/5 completed in 6.04s
+Average loss: 0.4032
+Training accuracy: 81.61%
+Model saved to models/run_20250508_205728_data12500_emb32_hid16/url_classifier.pt
+
+Evaluating on validation set to determine threshold...
+Chosen threshold tau: 0.9180
+Threshold saved to models/run_20250508_205728_data12500_emb32_hid16/threshold.txt
+
+Evaluating on test set...
+Model Only: Test FPR: 0.37%, Test FNR: 76.29%
+
+Building overflow Bloom filter...
+Processing 3750 URLs in 4 batches (batch size: 1024)...
+100%|██████████████████████████████████████| 4/4 [00:00<00:00, 20.28it/s]
+Adding 1409 false negatives to overflow Bloom filter...
+100%|████████████████████████████| 1409/1409 [00:00<00:00, 412003.23it/s]
+Number of false negatives stored in the overflow Bloom filter: 1409
+Estimated memory usage of overflow Bloom filter: 1942.38 bytes
+Overflow bloom filter saved to models/run_20250508_205728_data12500_emb32_hid16/overflow_bloom.pkl
+m_per_element=9.585058377367439
+Traditional Bloom filter size for 1847 positives at 1.0% FPR: 2212.95 bytes
+Using device: mps
+Dataset sizes: train=30000, validation=5000, test=15000
+Train set size: 30000
+Val set size: 5000
+Test set size: 15000
+Negative set size: 691476
+Hyperparameters saved to models/run_20250508_205815_data50000_emb32_hid16/hyperparams.json
+
+Starting training for 5 epochs...
+Epoch 1/5: 100%|█| 469/469 [00:25<00:00, 18.63it/s, loss=0.3297, acc=73.4
+Epoch 1/5 completed in 25.18s
+Average loss: 0.5149
+Training accuracy: 73.47%
+Epoch 2/5: 100%|█| 469/469 [00:25<00:00, 18.15it/s, loss=0.4314, acc=83.4
+Epoch 2/5 completed in 25.84s
+Average loss: 0.3757
+Training accuracy: 83.42%
+Epoch 3/5: 100%|█| 469/469 [00:25<00:00, 18.69it/s, loss=0.2964, acc=90.5
+Epoch 3/5 completed in 25.10s
+Average loss: 0.2361
+Training accuracy: 90.56%
+Epoch 4/5: 100%|█| 469/469 [00:25<00:00, 18.53it/s, loss=0.1650, acc=92.3
+Epoch 4/5 completed in 25.31s
+Average loss: 0.1957
+Training accuracy: 92.37%
+Epoch 5/5: 100%|█| 469/469 [00:24<00:00, 19.20it/s, loss=0.1911, acc=92.7
+Epoch 5/5 completed in 24.43s
+Average loss: 0.1832
+Training accuracy: 92.74%
+Model saved to models/run_20250508_205815_data50000_emb32_hid16/url_classifier.pt
+
+Evaluating on validation set to determine threshold...
+Chosen threshold tau: 0.9675
+Threshold saved to models/run_20250508_205815_data50000_emb32_hid16/threshold.txt
+
+Evaluating on test set...
+Model Only: Test FPR: 0.67%, Test FNR: 44.62%
+
+Building overflow Bloom filter...
+Processing 15000 URLs in 15 batches (batch size: 1024)...
+100%|████████████████████████████████████| 15/15 [00:00<00:00, 25.31it/s]
+Adding 3354 false negatives to overflow Bloom filter...
+100%|████████████████████████████| 3354/3354 [00:00<00:00, 480093.36it/s]
+Number of false negatives stored in the overflow Bloom filter: 3354
+Estimated memory usage of overflow Bloom filter: 4623.50 bytes
+Overflow bloom filter saved to models/run_20250508_205815_data50000_emb32_hid16/overflow_bloom.pkl
+m_per_element=9.585058377367439
+Traditional Bloom filter size for 7516 positives at 1.0% FPR: 9005.16 bytes
+Using device: mps
+Dataset sizes: train=120000, validation=20000, test=60000
+Train set size: 120000
+Val set size: 20000
+Test set size: 60000
+Negative set size: 691476
+Hyperparameters saved to models/run_20250508_210034_data200000_emb32_hid16/hyperparams.json
+
+Starting training for 5 epochs...
+Epoch 1/5: 100%|█| 1875/1875 [01:37<00:00, 19.28it/s, loss=0.2418, acc=85
+Epoch 1/5 completed in 97.26s
+Average loss: 0.3080
+Training accuracy: 85.90%
+Epoch 2/5: 100%|█| 1875/1875 [01:36<00:00, 19.42it/s, loss=0.1805, acc=92
+Epoch 2/5 completed in 96.56s
+Average loss: 0.1799
+Training accuracy: 92.73%
+Epoch 3/5: 100%|█| 1875/1875 [01:37<00:00, 19.24it/s, loss=0.2876, acc=93
+Epoch 3/5 completed in 97.47s
+Average loss: 0.1594
+Training accuracy: 93.55%
+Epoch 4/5: 100%|█| 1875/1875 [01:37<00:00, 19.22it/s, loss=0.0531, acc=94
+Epoch 4/5 completed in 97.53s
+Average loss: 0.1449
+Training accuracy: 94.14%
+Epoch 5/5: 100%|█| 1875/1875 [01:35<00:00, 19.59it/s, loss=0.1383, acc=94
+Epoch 5/5 completed in 95.69s
+Average loss: 0.1368
+Training accuracy: 94.50%
+Model saved to models/run_20250508_210034_data200000_emb32_hid16/url_classifier.pt
+
+Evaluating on validation set to determine threshold...
+Chosen threshold tau: 0.9138
+Threshold saved to models/run_20250508_210034_data200000_emb32_hid16/threshold.txt
+
+Evaluating on test set...
+Model Only: Test FPR: 0.55%, Test FNR: 24.73%
+
+Building overflow Bloom filter...
+Processing 60000 URLs in 59 batches (batch size: 1024)...
+100%|████████████████████████████████████| 59/59 [00:02<00:00, 23.69it/s]
+Adding 7404 false negatives to overflow Bloom filter...
+100%|████████████████████████████| 7404/7404 [00:00<00:00, 524403.09it/s]
+Number of false negatives stored in the overflow Bloom filter: 7404
+Estimated memory usage of overflow Bloom filter: 10206.25 bytes
+Overflow bloom filter saved to models/run_20250508_210034_data200000_emb32_hid16/overflow_bloom.pkl
+m_per_element=9.585058377367439
+Traditional Bloom filter size for 29936 positives at 1.0% FPR: 35867.29 bytes
+Using device: mps
+Dataset sizes: train=480000, validation=80000, test=240000
+Train set size: 480000
+Val set size: 80000
+Test set size: 240000
+Negative set size: 691476
+Hyperparameters saved to models/run_20250508_210855_data800000_emb32_hid16/hyperparams.json
+
+Starting training for 5 epochs...
+Epoch 1/5: 100%|█| 7500/7500 [06:30<00:00, 19.19it/s, loss=0.2097, acc=91
+Epoch 1/5 completed in 390.79s
+Average loss: 0.1977
+Training accuracy: 91.59%
+Epoch 2/5: 100%|█| 7500/7500 [06:46<00:00, 18.44it/s, loss=0.0955, acc=94
+Epoch 2/5 completed in 406.77s
+Average loss: 0.1279
+Training accuracy: 94.91%
+Epoch 3/5: 100%|█| 7500/7500 [06:58<00:00, 17.92it/s, loss=0.0896, acc=95
+Epoch 3/5 completed in 418.55s
+Average loss: 0.1159
+Training accuracy: 95.38%
+Epoch 4/5: 100%|█| 7500/7500 [07:12<00:00, 17.35it/s, loss=0.0479, acc=95
+Epoch 4/5 completed in 432.30s
+Average loss: 0.1094
+Training accuracy: 95.64%
+Epoch 5/5: 100%|█| 7500/7500 [07:03<00:00, 17.73it/s, loss=0.1080, acc=95
+Epoch 5/5 completed in 423.09s
+Average loss: 0.1044
+Training accuracy: 95.87%
+Model saved to models/run_20250508_210855_data800000_emb32_hid16/url_classifier.pt
+
+Evaluating on validation set to determine threshold...
+Chosen threshold tau: 0.9503
+Threshold saved to models/run_20250508_210855_data800000_emb32_hid16/threshold.txt
+
+Evaluating on test set...
+Model Only: Test FPR: 0.49%, Test FNR: 16.63%
+
+Building overflow Bloom filter...
+Processing 240000 URLs in 235 batches (batch size: 1024)...
+100%|██████████████████████████████████| 235/235 [00:10<00:00, 23.17it/s]
+Adding 19931 false negatives to overflow Bloom filter...
+100%|██████████████████████████| 19931/19931 [00:00<00:00, 172907.24it/s]
+Number of false negatives stored in the overflow Bloom filter: 19931
+Estimated memory usage of overflow Bloom filter: 27474.38 bytes
+Overflow bloom filter saved to models/run_20250508_210855_data800000_emb32_hid16/overflow_bloom.pkl
+m_per_element=9.585058377367439
+Traditional Bloom filter size for 119871 positives at 1.0% FPR: 143621.32 bytes
+Using device: mps
+Dataset sizes: train=7500, validation=1250, test=3750
+Train set size: 7500
+Val set size: 1250
+Test set size: 3750
+Negative set size: 691476
+Hyperparameters saved to models/run_20250508_214359_data12500_emb64_hid32/hyperparams.json
+
+Starting training for 5 epochs...
+Epoch 1/5: 100%|█| 118/118 [00:08<00:00, 14.72it/s, loss=0.5019, acc=65.6
+Epoch 1/5 completed in 8.02s
+Average loss: 0.6032
+Training accuracy: 65.60%
+Epoch 2/5: 100%|█| 118/118 [00:06<00:00, 17.36it/s, loss=0.3064, acc=78.2
+Epoch 2/5 completed in 6.80s
+Average loss: 0.4638
+Training accuracy: 78.20%
+Epoch 3/5: 100%|█| 118/118 [00:06<00:00, 18.47it/s, loss=0.3324, acc=82.4
+Epoch 3/5 completed in 6.39s
+Average loss: 0.3976
+Training accuracy: 82.40%
+Epoch 4/5: 100%|█| 118/118 [00:06<00:00, 18.13it/s, loss=0.2768, acc=88.7
+Epoch 4/5 completed in 6.51s
+Average loss: 0.2794
+Training accuracy: 88.73%
+Epoch 5/5: 100%|█| 118/118 [00:06<00:00, 17.45it/s, loss=0.1984, acc=91.7
+Epoch 5/5 completed in 6.76s
+Average loss: 0.2105
+Training accuracy: 91.75%
+Model saved to models/run_20250508_214359_data12500_emb64_hid32/url_classifier.pt
+
+Evaluating on validation set to determine threshold...
+Chosen threshold tau: 0.8991
+Threshold saved to models/run_20250508_214359_data12500_emb64_hid32/threshold.txt
+
+Evaluating on test set...
+Model Only: Test FPR: 0.79%, Test FNR: 38.49%
+
+Building overflow Bloom filter...
+Processing 3750 URLs in 4 batches (batch size: 1024)...
+100%|██████████████████████████████████████| 4/4 [00:00<00:00, 14.51it/s]
+Adding 711 false negatives to overflow Bloom filter...
+100%|██████████████████████████████| 711/711 [00:00<00:00, 465669.92it/s]
+Number of false negatives stored in the overflow Bloom filter: 711
+Estimated memory usage of overflow Bloom filter: 980.12 bytes
+Overflow bloom filter saved to models/run_20250508_214359_data12500_emb64_hid32/overflow_bloom.pkl
+m_per_element=9.585058377367439
+Traditional Bloom filter size for 1847 positives at 1.0% FPR: 2212.95 bytes
+Using device: mps
+Dataset sizes: train=30000, validation=5000, test=15000
+Train set size: 30000
+Val set size: 5000
+Test set size: 15000
+Negative set size: 691476
+Hyperparameters saved to models/run_20250508_214446_data50000_emb64_hid32/hyperparams.json
+
+Starting training for 5 epochs...
+Epoch 1/5: 100%|█| 469/469 [00:35<00:00, 13.21it/s, loss=0.4293, acc=76.0
+Epoch 1/5 completed in 35.52s
+Average loss: 0.4791
+Training accuracy: 76.07%
+Epoch 2/5: 100%|█| 469/469 [00:27<00:00, 16.89it/s, loss=0.2199, acc=90.4
+Epoch 2/5 completed in 27.76s
+Average loss: 0.2379
+Training accuracy: 90.43%
+Epoch 3/5: 100%|█| 469/469 [00:28<00:00, 16.72it/s, loss=0.1056, acc=93.2
+Epoch 3/5 completed in 28.05s
+Average loss: 0.1719
+Training accuracy: 93.28%
+Epoch 4/5: 100%|█| 469/469 [00:28<00:00, 16.40it/s, loss=0.1134, acc=94.0
+Epoch 4/5 completed in 28.59s
+Average loss: 0.1529
+Training accuracy: 94.08%
+Epoch 5/5: 100%|█| 469/469 [00:27<00:00, 16.85it/s, loss=0.1336, acc=94.6
+Epoch 5/5 completed in 27.83s
+Average loss: 0.1387
+Training accuracy: 94.61%
+Model saved to models/run_20250508_214446_data50000_emb64_hid32/url_classifier.pt
+
+Evaluating on validation set to determine threshold...
+Chosen threshold tau: 0.8696
+Threshold saved to models/run_20250508_214446_data50000_emb64_hid32/threshold.txt
+
+Evaluating on test set...
+Model Only: Test FPR: 0.59%, Test FNR: 24.95%
+
+Building overflow Bloom filter...
+Processing 15000 URLs in 15 batches (batch size: 1024)...
+100%|████████████████████████████████████| 15/15 [00:00<00:00, 27.83it/s]
+Adding 1875 false negatives to overflow Bloom filter...
+100%|████████████████████████████| 1875/1875 [00:00<00:00, 425190.31it/s]
+Number of false negatives stored in the overflow Bloom filter: 1875
+Estimated memory usage of overflow Bloom filter: 2584.75 bytes
+Overflow bloom filter saved to models/run_20250508_214446_data50000_emb64_hid32/overflow_bloom.pkl
+m_per_element=9.585058377367439
+Traditional Bloom filter size for 7516 positives at 1.0% FPR: 9005.16 bytes
+Using device: mps
+Dataset sizes: train=120000, validation=20000, test=60000
+Train set size: 120000
+Val set size: 20000
+Test set size: 60000
+Negative set size: 691476
+Hyperparameters saved to models/run_20250508_214728_data200000_emb64_hid32/hyperparams.json
+
+Starting training for 5 epochs...
+Epoch 1/5: 100%|█| 1875/1875 [01:47<00:00, 17.47it/s, loss=0.0942, acc=89
+Epoch 1/5 completed in 107.36s
+Average loss: 0.2473
+Training accuracy: 89.04%
+Epoch 2/5: 100%|█| 1875/1875 [01:49<00:00, 17.06it/s, loss=0.2581, acc=94
+Epoch 2/5 completed in 109.90s
+Average loss: 0.1390
+Training accuracy: 94.39%
+Epoch 3/5: 100%|█| 1875/1875 [01:57<00:00, 15.90it/s, loss=0.0539, acc=95
+Epoch 3/5 completed in 117.95s
+Average loss: 0.1218
+Training accuracy: 95.13%
+Epoch 4/5: 100%|█| 1875/1875 [02:02<00:00, 15.26it/s, loss=0.1230, acc=95
+Epoch 4/5 completed in 122.89s
+Average loss: 0.1122
+Training accuracy: 95.59%
+Epoch 5/5: 100%|█| 1875/1875 [01:57<00:00, 15.91it/s, loss=0.0360, acc=95
+Epoch 5/5 completed in 117.85s
+Average loss: 0.1049
+Training accuracy: 95.87%
+Model saved to models/run_20250508_214728_data200000_emb64_hid32/url_classifier.pt
+
+Evaluating on validation set to determine threshold...
+Chosen threshold tau: 0.9785
+Threshold saved to models/run_20250508_214728_data200000_emb64_hid32/threshold.txt
+
+Evaluating on test set...
+Model Only: Test FPR: 0.54%, Test FNR: 18.68%
+
+Building overflow Bloom filter...
+Processing 60000 URLs in 59 batches (batch size: 1024)...
+100%|████████████████████████████████████| 59/59 [00:03<00:00, 17.01it/s]
+Adding 5592 false negatives to overflow Bloom filter...
+100%|████████████████████████████| 5592/5592 [00:00<00:00, 155770.69it/s]
+Number of false negatives stored in the overflow Bloom filter: 5592
+Estimated memory usage of overflow Bloom filter: 7708.50 bytes
+Overflow bloom filter saved to models/run_20250508_214728_data200000_emb64_hid32/overflow_bloom.pkl
+m_per_element=9.585058377367439
+Traditional Bloom filter size for 29936 positives at 1.0% FPR: 35867.29 bytes
+Using device: mps
+Dataset sizes: train=480000, validation=80000, test=240000
+Train set size: 480000
+Val set size: 80000
+Test set size: 240000
+Negative set size: 691476
+Hyperparameters saved to models/run_20250508_215724_data800000_emb64_hid32/hyperparams.json
+
+Starting training for 5 epochs...
+Epoch 1/5: 100%|█| 7500/7500 [07:23<00:00, 16.92it/s, loss=0.0855, acc=93
+Epoch 1/5 completed in 443.17s
+Average loss: 0.1542
+Training accuracy: 93.62%
+Epoch 2/5: 100%|█| 7500/7500 [06:59<00:00, 17.88it/s, loss=0.1286, acc=95
+Epoch 2/5 completed in 419.51s
+Average loss: 0.1030
+Training accuracy: 95.94%
+Epoch 3/5: 100%|█| 7500/7500 [06:55<00:00, 18.06it/s, loss=0.0947, acc=96
+Epoch 3/5 completed in 415.36s
+Average loss: 0.0918
+Training accuracy: 96.39%
+Epoch 4/5: 100%|█| 7500/7500 [07:24<00:00, 16.89it/s, loss=0.0208, acc=96
+Epoch 4/5 completed in 444.10s
+Average loss: 0.0852
+Training accuracy: 96.66%
+Epoch 5/5: 100%|█| 7500/7500 [06:58<00:00, 17.90it/s, loss=0.1851, acc=96
+Epoch 5/5 completed in 418.99s
+Average loss: 0.0810
+Training accuracy: 96.83%
+Model saved to models/run_20250508_215724_data800000_emb64_hid32/url_classifier.pt
+
+Evaluating on validation set to determine threshold...
+Chosen threshold tau: 0.8802
+Threshold saved to models/run_20250508_215724_data800000_emb64_hid32/threshold.txt
+
+Evaluating on test set...
+Model Only: Test FPR: 0.53%, Test FNR: 10.51%
+
+Building overflow Bloom filter...
+Processing 240000 URLs in 235 batches (batch size: 1024)...
+100%|██████████████████████████████████| 235/235 [00:11<00:00, 20.76it/s]
+Adding 12602 false negatives to overflow Bloom filter...
+100%|██████████████████████████| 12602/12602 [00:00<00:00, 196005.54it/s]
+Number of false negatives stored in the overflow Bloom filter: 12602
+Estimated memory usage of overflow Bloom filter: 17371.50 bytes
+Overflow bloom filter saved to models/run_20250508_215724_data800000_emb64_hid32/overflow_bloom.pkl
+m_per_element=9.585058377367439
+Traditional Bloom filter size for 119871 positives at 1.0% FPR: 143621.32 bytes
+(venv) aghyaddeeb:@Aghyads-MacBook-Pro-629:/Users/aghyaddeeb/Documents/coding/cs2241/project/learned_bloom_filters $ 

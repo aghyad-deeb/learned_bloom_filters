@@ -8,7 +8,7 @@ import pandas as pd
 # URLs that can be mistaken for phishing pages.
 
 ## Actual data:
-# the training dataset is adopted from: https://www.kaggle.com/datasets/ctanush/malicious-phish
+# the training dataset is adopted from https://ieee-dataport.org/documents/phishing-attack-dataset#files
 # negative dataset filtered for benign from https://data.mendeley.com/datasets/vfszbj9b36/1
 # in addition to randomly generated urls
 
@@ -120,7 +120,7 @@ def generate_realistic_random_url(
 def main() :
     random_state = 42
     raw_data_dir = "raw_data"
-    training_dataset_name = "kaggle_malicious_phish.csv"
+    training_dataset_name = "phishing_attack_big_train.csv"
     negative_dataset_name = "mandeley_phishing_and_benign.csv"
 
     benign_column_negative_dataset = "type"
@@ -156,17 +156,70 @@ def main() :
         os.path.join(processed_data_dir, "negative_dataset.csv"), index=False
     )
 
+    # Read the training dataset (phishing_attack_big_train.csv)
+    # This file is tab-delimited with no header row and two columns: type and url
+    # Some lines may have inconsistent formatting
+    training_dataset_path = os.path.join(raw_data_dir, training_dataset_name)
+    
+    # Read with tab delimiter, add column names, and handle parsing errors
     training_dataset = pd.read_csv(
-        os.path.join(raw_data_dir, training_dataset_name)
+        training_dataset_path,
+        sep='\t',
+        header=None,
+        names=["type", "url"],
+        on_bad_lines='skip',  # Skip lines with incorrect format
+        engine='python'  # More flexible parsing engine
     )
-    training_dataset = (
-        training_dataset
+    
+    # Remove any rows with NaN values after parsing
+    training_dataset = training_dataset.dropna()
+    
+    # Make sure we only have two valid types
+    training_dataset = training_dataset[training_dataset["type"].isin(["legitimate", "phishing"])]
+    
+    # Map "legitimate" to "benign" to maintain consistent naming
+    training_dataset["type"] = training_dataset["type"].map(
+        {"legitimate": "benign", "phishing": "phishing"}
+    )
+    
+    # Check class distribution before balancing
+    class_counts_before = training_dataset["type"].value_counts()
+    print(f"Class distribution before balancing: {class_counts_before}")
+    
+    # Balance the dataset by undersampling the majority class
+    benign_samples = training_dataset[training_dataset["type"] == "benign"]
+    phishing_samples = training_dataset[training_dataset["type"] == "phishing"]
+    
+    # Get the count of the minority class
+    min_class_count = min(len(benign_samples), len(phishing_samples))
+    
+    # Undersample the majority class to match the minority class
+    if len(benign_samples) > min_class_count:
+        benign_samples = benign_samples.sample(min_class_count, random_state=random_state)
+    if len(phishing_samples) > min_class_count:
+        phishing_samples = phishing_samples.sample(min_class_count, random_state=random_state)
+    
+    # Combine the balanced classes
+    balanced_training_dataset = pd.concat([benign_samples, phishing_samples])
+    
+    # Verify the balance
+    class_counts_after = balanced_training_dataset["type"].value_counts()
+    print(f"Class distribution after balancing: {class_counts_after}")
+    
+    # Shuffle the balanced dataset
+    balanced_training_dataset = (
+        balanced_training_dataset
             .sample(frac=1, random_state=random_state)
             .reset_index(drop=True)
     )
-    training_dataset.to_csv(
-        os.path.join(processed_data_dir, "training_dataset.csv"), index=False
+    
+    # Save the processed balanced training dataset
+    balanced_training_dataset.to_csv(
+        os.path.join(processed_data_dir, "training_dataset_extended_balanced.csv"), index=False
     )
+    
+    # Print type counts for verification
+    print(f"{balanced_training_dataset['type'].value_counts()=}")
     
 
 if __name__ == "__main__":

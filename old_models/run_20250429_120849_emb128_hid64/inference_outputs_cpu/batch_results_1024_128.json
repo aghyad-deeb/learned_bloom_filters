@@ -1,0 +1,67 @@
+{
+    "model_positives": 156,
+    "bloom_positives": 21,
+    "total_positives": 177,
+    "num_successful_urls": 1024,
+    "failed_urls": [],
+    "timing": {
+        "total_preprocessing_time": 2.366304397583008,
+        "preprocessing_time_per_url": 0.002310844138264656,
+        "warmup_batch_time": 3.62396240234375,
+        "moving_tensor_to_device_per_batch_time_list": [
+            0.44226646423339844,
+            1.603841781616211,
+            0.431060791015625,
+            0.43487548828125,
+            0.4951953887939453,
+            0.47016143798828125,
+            0.5209445953369141,
+            0.3561973571777344
+        ],
+        "inference_per_batch_time_list": [
+            18.64910125732422,
+            8.291006088256836,
+            10.31494140625,
+            7.175207138061523,
+            5.68699836730957,
+            6.903886795043945,
+            11.687755584716797,
+            7.728099822998047
+        ],
+        "overflow_bloom_filter_per_batch_time_list": [
+            0.8490085601806641,
+            0.2048015594482422,
+            0.1971721649169922,
+            0.19788742065429688,
+            0.18095970153808594,
+            0.23412704467773438,
+            0.21409988403320312,
+            0.28586387634277344
+        ],
+        "batch_total_latency_per_batch_time_list": [
+            20.646333694458008,
+            10.146856307983398,
+            10.98012924194336,
+            7.849931716918945,
+            6.396055221557617,
+            7.647275924682617,
+            12.473821640014648,
+            8.419036865234375
+        ]
+    },
+    "size_metrics": {
+        "model_size_bytes": 290052,
+        "overflow_bloom_filter_size_bytes": 2756,
+        "traditional_bloom_filter_size_bytes": 22462.584307360594
+    },
+    "traditional_bloom": {
+        "traditional_bloom_positives": 173,
+        "timing": {
+            "total_time": 2.9120445251464844,
+            "time_per_url": 0.0028437934815883636,
+            "urls_per_second": 351642.9749467824
+        }
+    },
+    "batch_size": 128,
+    "sample_size": 1024
+}

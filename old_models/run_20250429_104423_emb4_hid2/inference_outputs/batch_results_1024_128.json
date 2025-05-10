@@ -1,0 +1,67 @@
+{
+    "model_positives": 46,
+    "bloom_positives": 142,
+    "total_positives": 188,
+    "num_successful_urls": 1024,
+    "failed_urls": [],
+    "timing": {
+        "total_preprocessing_time": 1.6350746154785156,
+        "preprocessing_time_per_url": 0.001596752554178238,
+        "warmup_batch_time": 65.04392623901367,
+        "moving_tensor_to_device_per_batch_time_list": [
+            1.4462471008300781,
+            0.6470680236816406,
+            0.5171298980712891,
+            0.537872314453125,
+            0.5121231079101562,
+            0.6000995635986328,
+            0.95367431640625,
+            0.5869865417480469
+        ],
+        "inference_per_batch_time_list": [
+            53.903818130493164,
+            17.177104949951172,
+            16.75701141357422,
+            16.53599739074707,
+            17.49277114868164,
+            17.096996307373047,
+            16.885995864868164,
+            16.7696475982666
+        ],
+        "overflow_bloom_filter_per_batch_time_list": [
+            0.26702880859375,
+            0.22602081298828125,
+            0.21028518676757812,
+            0.20694732666015625,
+            0.24700164794921875,
+            0.2830028533935547,
+            0.21886825561523438,
+            0.24819374084472656
+        ],
+        "batch_total_latency_per_batch_time_list": [
+            55.74297904968262,
+            18.079042434692383,
+            17.501115798950195,
+            17.292022705078125,
+            18.296003341674805,
+            18.014192581176758,
+            18.094778060913086,
+            17.635822296142578
+        ]
+    },
+    "size_metrics": {
+        "model_size_bytes": 4604,
+        "overflow_bloom_filter_size_bytes": 19106,
+        "traditional_bloom_filter_size_bytes": 22462.584307360594
+    },
+    "traditional_bloom": {
+        "traditional_bloom_positives": 183,
+        "timing": {
+            "total_time": 1.8298625946044922,
+            "time_per_url": 0.0017869751900434494,
+            "urls_per_second": 559604.8594136807
+        }
+    },
+    "batch_size": 128,
+    "sample_size": 1024
+}

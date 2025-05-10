@@ -1,7 +1,38 @@
-RUNS=(run_20250429_104423_emb4_hid2 run_20250429_110502_emb8_hid4 run_20250429_112526_emb16_hid8 run_20250429_114727_emb64_hid32 run_20250429_120849_emb128_hid64 run_20250429_123027_emb256_hid128 run_20250427_115026_emb32_hid16)
+RUNS=(run_20250508_120450_data12500_emb8_hid4
+run_20250508_120541_data25000_emb8_hid4
+run_20250508_120659_data50000_emb8_hid4
+run_20250508_120926_data100000_emb8_hid4
+run_20250508_121409_data200000_emb8_hid4
+run_20250508_122324_data400000_emb8_hid4
+run_20250508_124223_data800000_emb8_hid4
+run_20250508_131809_data1600000_emb8_hid4
+run_20250508_142636_data3200000_emb8_hid4
+run_20250508_163931_data12500_emb16_hid8
+run_20250508_164014_data25000_emb16_hid8
+run_20250508_164202_data12500_emb4_hid2
+run_20250508_164245_data50000_emb4_hid2
+run_20250508_164458_data200000_emb4_hid2
+run_20250508_165328_data800000_emb4_hid2
+run_20250508_172939_data3200000_emb4_hid2
+run_20250508_194526_data12500_emb16_hid8
+run_20250508_194607_data50000_emb16_hid8
+run_20250508_194818_data200000_emb16_hid8
+run_20250508_195626_data800000_emb16_hid8
+run_20250508_202851_data3200000_emb16_hid8
+run_20250508_205728_data12500_emb32_hid16
+run_20250508_205815_data50000_emb32_hid16
+run_20250508_210034_data200000_emb32_hid16
+run_20250508_210855_data800000_emb32_hid16
+run_20250508_214359_data12500_emb64_hid32
+run_20250508_214446_data50000_emb64_hid32
+run_20250508_214728_data200000_emb64_hid32
+run_20250508_215724_data800000_emb64_hid32
+run_20250508_225519_data3200000_emb16_hid8
+run_20250509_012951_data3200000_emb32_hid16
+run_20250509_033949_data3200000_emb64_hid32)
 PLOT_TRADITIONAL=true
 PLOT_LOG_SCALE=true
-# PLOT_CPU=true
+PLOT_CPU=true
 if [ "$PLOT_TRADITIONAL" = true ]; then
     TRADITIONAL="--traditional"
 fi
@@ -11,4 +42,7 @@ fi
 if [ "$PLOT_CPU" = true ]; then
     CPU="--cpu"
 fi  
-python analyze_results.py -models_path models -metrics total inference tensor bloom $TRADITIONAL $LOG_SCALE $CPU
+# MODEL_PATH="old_models"
+MODEL_PATH="models"
+METRICS="total inference tensor bloom"
+python analyze_results.py -models_path $MODEL_PATH -metrics $METRICS $TRADITIONAL $LOG_SCALE $CPU

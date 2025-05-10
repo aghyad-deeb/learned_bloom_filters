@@ -1,0 +1,12 @@
+{
+    "embedding_dim": 32,
+    "hidden_dim": 16,
+    "num_epochs": 5,
+    "batch_size": 64,
+    "learning_rate": 0.001,
+    "desired_fpr": 0.01,
+    "random_seed": 42,
+    "vocab_size": 274,
+    "timestamp": "20250427_115026",
+    "device": "mps"
+}

@@ -179,7 +179,7 @@ def calculate_size_metrics(model, overflow_bloom, run_dir):
     
     # Calculate traditional bloom filter size using test dataset
     data_dir = "data"
-    training_dataset_name = "training_dataset.csv"
+    training_dataset_name = "training_dataset_extended_balanced.csv"
     negative_dataset_name = "negative_dataset.csv"
     training_dataset_path = os.path.join(data_dir, training_dataset_name)
     negative_dataset_path = os.path.join(data_dir, negative_dataset_name)
@@ -434,7 +434,7 @@ def main():
     
     data_dir = "data"
     model_dir = "models"
-    training_dataset_name = "training_dataset.csv"
+    training_dataset_name = "training_dataset_extended_balanced.csv"
     negative_dataset_name = "negative_dataset.csv"
     training_dataset_path = os.path.join(data_dir, training_dataset_name)
     negative_dataset_path = os.path.join(data_dir, negative_dataset_name)
@@ -476,21 +476,33 @@ def main():
     
     # Load hyperparameters
     hyperparams = load_hyperparams(hyperparams_path)
-    
-    # Load data to build vocabulary
-    train_df, val_df, test_df, negative_df = load_data(training_dataset_path, negative_dataset_path)
-    
+
+    # Get the data_cap used during training
+    data_cap = None
+    random_seed = 42
+    if hyperparams:
+        data_cap = hyperparams.get('data_cap')
+        random_seed = hyperparams.get('random_seed', 42)
+        print(f"Using data_cap={data_cap} and random_seed={random_seed} from hyperparameters")
+
+    # Load data to build vocabulary with the same data_cap used during training
+    train_df, val_df, test_df, negative_df = load_data(training_dataset_path, negative_dataset_path, data_cap=data_cap, random_seed=random_seed)
+
     # Build vocabulary
     char2idx, idx2char = build_vocab([train_df, val_df, test_df, negative_df])
-    vocab_size = len(char2idx)
-    
+    current_vocab_size = len(char2idx)
+
     # Initialize the model with hyperparameters from file if available
     if hyperparams:
         embedding_dim = hyperparams.get('embedding_dim', 32)
         hidden_dim = hyperparams.get('hidden_dim', 16)
+        # Use the vocabulary size from hyperparameters instead of the newly calculated one
+        vocab_size = hyperparams.get('vocab_size', current_vocab_size)
+        assert vocab_size == current_vocab_size, f"Vocab size mismatch: {vocab_size} != {current_vocab_size}"
+        print(f"Using vocab_size={vocab_size} from hyperparameters (current data has vocab_size={current_vocab_size})")
+        
     else:
-        embedding_dim = 32
-        hidden_dim = 16
+        raise Exception("No hyperparameters found.")
     
     model = URLClassifier(vocab_size, embedding_dim, hidden_dim).to(device)
     

@@ -3,22 +3,25 @@
 # Define dimension pairs using an associative array
 declare -A dim_pairs=(
     # [4]=2
-    [8]=4
-    # [16]=8
-    # [64]=32
+    # [8]=4
+    [16]=8
+    [32]=16
+    [64]=32
     # [128]=64
     # [256]=128
 )
 
 # Define data size pairs using an associative array
 declare  data_sizes=(
-    12500
-    25000
-    50000
-    100000
-    200000
-    400000
-    800000
+    # 12500
+    # 25000
+    # 50000
+    # 100000
+    # 200000
+    # 400000
+    # 800000
+    # 1600000
+    3200000
 )
 
 

@@ -344,7 +344,7 @@ def load_data(training_dataset_path, negative_dataset_path, data_cap=None, rando
     
     # Split the dataset into training, validation, and test sets (60/20/20 split)
     train_split = int(0.6 * len(df))
-    val_split = int(0.8 * len(df))
+    val_split = int(0.7 * len(df))
     
     train_df = df.iloc[:train_split]
     val_df = df.iloc[train_split:val_split]
@@ -601,16 +601,16 @@ def main():
     # Include model architecture and data size in the run directory name
     model_config = f"emb{embedding_dim}_hid{hidden_dim}"
     data_config = f"_data{data_cap}" if data_cap is not None else ""
-    model_run_dir = os.path.join(model_dir, f"run_{timestamp}{data_config}_{model_config}")
     
     data_dir = "data"
     model_dir = "models"
+    model_run_dir = os.path.join(model_dir, f"run_{timestamp}{data_config}_{model_config}")
     model_save_path = os.path.join(model_run_dir, "url_classifier.pt")
     overflow_bloom_filter_save_path = os.path.join(model_run_dir, "overflow_bloom.pkl")
     threshold_save_path = os.path.join(model_run_dir, "threshold.txt")
     hyperparams_save_path = os.path.join(model_run_dir, "hyperparams.json")
     
-    training_dataset_name = "training_dataset.csv"
+    training_dataset_name = "training_dataset_extended_balanced.csv"
     negative_dataset_name = "negative_dataset.csv"
     
     training_dataset_path = os.path.join(data_dir, training_dataset_name)
@@ -688,29 +688,29 @@ def main():
     save_model(model, model_save_path)
     
     # Create a link to the latest run
-    latest_run_link = os.path.join(model_dir, "latest_run")
-    try:
-        # Check if latest_run_link already exists
-        if os.path.lexists(latest_run_link):  # Use lexists instead of exists to handle broken symlinks
-            # Remove the existing link/file/directory
-            if os.path.islink(latest_run_link):
-                os.unlink(latest_run_link)
-                print(f"Removed existing symlink: {latest_run_link}")
-            elif os.path.isdir(latest_run_link):
-                import shutil
-                shutil.rmtree(latest_run_link)
-                print(f"Removed existing directory: {latest_run_link}")
-            else:
-                os.remove(latest_run_link)
-                print(f"Removed existing file: {latest_run_link}")
+    # latest_run_link = os.path.join(model_dir, "latest_run")
+    # try:
+    #     # Check if latest_run_link already exists
+    #     if os.path.lexists(latest_run_link):  # Use lexists instead of exists to handle broken symlinks
+    #         # Remove the existing link/file/directory
+    #         if os.path.islink(latest_run_link):
+    #             os.unlink(latest_run_link)
+    #             print(f"Removed existing symlink: {latest_run_link}")
+    #         elif os.path.isdir(latest_run_link):
+    #             import shutil
+    #             shutil.rmtree(latest_run_link)
+    #             print(f"Removed existing directory: {latest_run_link}")
+    #         else:
+    #             os.remove(latest_run_link)
+    #             print(f"Removed existing file: {latest_run_link}")
         
-        # Create the new symlink (using absolute paths to avoid relative path issues)
-        abs_model_run_dir = os.path.abspath(model_run_dir)
-        os.symlink(abs_model_run_dir, latest_run_link)
-        print(f"Created link to latest run: {latest_run_link} -> {abs_model_run_dir}")
-    except Exception as e:
-        print(f"Warning: Could not create latest_run symlink: {str(e)}")
-        print(f"To fix this, manually remove {latest_run_link} and retry or just access this run directly at: {model_run_dir}")
+    #     # Create the new symlink (using absolute paths to avoid relative path issues)
+    #     abs_model_run_dir = os.path.abspath(model_run_dir)
+    #     os.symlink(abs_model_run_dir, latest_run_link)
+    #     print(f"Created link to latest run: {latest_run_link} -> {abs_model_run_dir}")
+    # except Exception as e:
+    #     print(f"Warning: Could not create latest_run symlink: {str(e)}")
+    #     print(f"To fix this, manually remove {latest_run_link} and retry or just access this run directly at: {model_run_dir}")
     
     # Determine threshold
     model_desired_fpr = desired_fpr / 2
